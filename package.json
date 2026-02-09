@@ -18,9 +18,13 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "db:seed": "prisma db seed",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "ci:test": "npm run lint && npm run build && npm run test:coverage"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

@@ -29,7 +29,12 @@ npm run db:up
 npm run prisma:migrate -- --name init
 ```
 
-5. Start app:
+5. Seed realistic demo data:
+```bash
+npm run db:seed
+```
+
+6. Start app:
 ```bash
 npm run dev
 ```
@@ -41,6 +46,7 @@ App URL: [http://localhost:3000](http://localhost:3000)
 ```bash
 npm run prisma:generate
 npm run prisma:studio
+npm run db:seed
 ```
 
 ### Testing
