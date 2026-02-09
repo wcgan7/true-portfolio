@@ -1,8 +1,9 @@
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
-import { getMetricAudit, type AuditMetric } from "@/src/lib/services/audit-service";
+import type { AuditMetric } from "@/src/lib/services/audit-service";
 import type { OverviewHolding } from "@/src/lib/services/valuation-core";
 import { ExposureCharts } from "@/app/overview/exposure-charts";
 import { listAccounts } from "@/src/lib/services/account-service";
+import { MetricAuditDrawer } from "@/app/overview/metric-audit-drawer";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -69,15 +70,6 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   const topHoldingRows = [...aggregatedHoldings]
     .sort((a, b) => b.marketValue - a.marketValue)
     .slice(0, topN);
-  const audit = metric
-    ? await getMetricAudit({
-        metric,
-        asOfDate: new Date(`${snapshot.asOfDate}T00:00:00.000Z`),
-        mode,
-        accountId,
-      })
-    : null;
-
   const buildOverviewHref = (overrides: Record<string, string | null | undefined>) => {
     const params = new URLSearchParams();
     const base = {
@@ -136,16 +128,6 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
 
       <section>
         <h2>Totals</h2>
-        <p>
-          Audit:{" "}
-          <a href={buildOverviewHref({ metric: "totalValue" })}>Total Value</a> |{" "}
-          <a href={buildOverviewHref({ metric: "marketValue" })}>Market Value</a> |{" "}
-          <a href={buildOverviewHref({ metric: "cashValue" })}>Cash Value</a> |{" "}
-          <a href={buildOverviewHref({ metric: "realizedPnl" })}>Realized P&amp;L</a> |{" "}
-          <a href={buildOverviewHref({ metric: "unrealizedPnl" })}>Unrealized P&amp;L</a> |{" "}
-          <a href={buildOverviewHref({ metric: "mwr" })}>MWR</a> |{" "}
-          <a href={buildOverviewHref({ metric: "twr" })}>TWR</a>
-        </p>
         <ul>
           <li>Total Value: {snapshot.totals.totalValue.toFixed(2)}</li>
           <li>Cash Value: {snapshot.totals.cashValue.toFixed(2)}</li>
@@ -176,14 +158,12 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         </ul>
       </section>
 
-      {audit ? (
-        <section>
-          <h2>Metric Audit: {audit.metric}</h2>
-          <p>Value: {audit.value == null ? "N/A" : audit.value.toFixed(6)}</p>
-          <p>Transactions contributing: {audit.contributors.transactions.length}</p>
-          <p>Warnings in scope: {audit.contributors.warnings.length}</p>
-        </section>
-      ) : null}
+      <MetricAuditDrawer
+        asOfDate={snapshot.asOfDate}
+        mode={snapshot.mode}
+        accountId={accountId}
+        initialMetric={metric}
+      />
 
       {snapshot.lookThrough ? (
         <section>

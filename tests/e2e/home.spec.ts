@@ -27,6 +27,15 @@ test("overview shows metric audit panel when metric query is set", async ({ page
   await expect(page.getByRole("heading", { name: "Metric Audit: totalValue" })).toBeVisible();
 });
 
+test("overview supports opening and closing audit drawer", async ({ page }) => {
+  await page.goto("/overview");
+  await page.getByTestId("open-audit-totalValue").click();
+  await expect(page.getByTestId("metric-audit-drawer")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Metric Audit: totalValue" })).toBeVisible();
+  await page.getByTestId("close-audit-drawer-btn").click();
+  await expect(page.getByTestId("metric-audit-drawer")).not.toBeVisible();
+});
+
 test("overview supports asset filter links", async ({ page }) => {
   await page.goto("/overview?assetKind=STOCK");
   await expect(page.getByText("Asset Filter:")).toBeVisible();
