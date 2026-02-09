@@ -49,6 +49,10 @@ Jobs API supports server-side filters/pagination:
 - `status` (`RUNNING|SUCCEEDED|FAILED|SKIPPED_CONFLICT`)
 - `trigger` (`MANUAL|SCHEDULED`)
 
+Alert report API:
+- `GET /api/valuations/refresh/alerts?lookbackHours=24`
+- Returns failure/success totals, latest success/failure timestamps, and `alert.shouldWarn` with reason strings.
+
 ## Scheduler Wiring
 
 Use any scheduler (Vercel Cron, GitHub Actions, Cloud Scheduler, etc.) to call the endpoint. Keep cadence conservative in MVP (for example every 15-60 minutes during market hours).

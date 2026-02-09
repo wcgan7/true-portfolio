@@ -49,6 +49,28 @@ export type RefreshJobListParams = RefreshJobFilters & {
   offset?: number;
 };
 
+export type RefreshAlertReport = {
+  generatedAt: string;
+  lookbackHours: number;
+  windowStart: string;
+  totals: {
+    jobs: number;
+    succeeded: number;
+    failed: number;
+    running: number;
+    skippedConflict: number;
+  };
+  latest: {
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+  };
+  consecutiveFailureCount: number;
+  alert: {
+    shouldWarn: boolean;
+    reasons: string[];
+  };
+};
+
 export const VALUATION_REFRESH_LOCK_KEYS = {
   classId: 41011,
   objectId: 1,
@@ -209,4 +231,72 @@ export async function listRefreshJobs(params: RefreshJobListParams = {}): Promis
 
 export async function countRefreshJobs(filters: RefreshJobFilters = {}): Promise<number> {
   return prisma.refreshJob.count({ where: buildRefreshJobWhere(filters) });
+}
+
+export async function getRefreshAlertReport(lookbackHours = 24): Promise<RefreshAlertReport> {
+  const boundedLookbackHours = Math.max(1, Math.min(Math.floor(lookbackHours), 24 * 14));
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - boundedLookbackHours * 60 * 60 * 1000);
+
+  const [windowRows, latestRows] = await Promise.all([
+    prisma.refreshJob.findMany({
+      where: {
+        startedAt: { gte: windowStart },
+      },
+      select: {
+        status: true,
+      },
+    }),
+    prisma.refreshJob.findMany({
+      orderBy: { startedAt: "desc" },
+      take: 50,
+      select: {
+        status: true,
+        startedAt: true,
+      },
+    }),
+  ]);
+
+  const totals = {
+    jobs: windowRows.length,
+    succeeded: windowRows.filter((row) => row.status === "SUCCEEDED").length,
+    failed: windowRows.filter((row) => row.status === "FAILED").length,
+    running: windowRows.filter((row) => row.status === "RUNNING").length,
+    skippedConflict: windowRows.filter((row) => row.status === "SKIPPED_CONFLICT").length,
+  };
+
+  const lastSuccess = latestRows.find((row) => row.status === "SUCCEEDED");
+  const lastFailure = latestRows.find((row) => row.status === "FAILED");
+
+  let consecutiveFailureCount = 0;
+  for (const row of latestRows) {
+    if (row.status !== "FAILED") {
+      break;
+    }
+    consecutiveFailureCount += 1;
+  }
+
+  const reasons: string[] = [];
+  if (totals.failed >= 3 && totals.succeeded === 0) {
+    reasons.push("No successful refresh in lookback window with at least 3 failures");
+  }
+  if (consecutiveFailureCount >= 3) {
+    reasons.push("3 or more consecutive failed refresh jobs");
+  }
+
+  return {
+    generatedAt: now.toISOString(),
+    lookbackHours: boundedLookbackHours,
+    windowStart: windowStart.toISOString(),
+    totals,
+    latest: {
+      lastSuccessAt: lastSuccess?.startedAt.toISOString() ?? null,
+      lastFailureAt: lastFailure?.startedAt.toISOString() ?? null,
+    },
+    consecutiveFailureCount,
+    alert: {
+      shouldWarn: reasons.length > 0,
+      reasons,
+    },
+  };
 }
