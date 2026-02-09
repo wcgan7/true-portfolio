@@ -132,7 +132,11 @@ model DailyValuation {
 
 model WarningEvent {
   id           String          @id @default(cuid())
+  fingerprint  String          @unique
   date         DateTime
+  firstSeenAt  DateTime        @default(now())
+  lastSeenAt   DateTime        @default(now())
+  resolvedAt   DateTime?
   code         String
   severity     WarningSeverity @default(WARNING)
   accountId    String?

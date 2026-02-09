@@ -9,6 +9,7 @@ import {
   type OverviewWarning,
   getValuationSnapshotCore,
 } from "@/src/lib/services/valuation-core";
+import { persistWarningLifecycle } from "@/src/lib/services/warning-service";
 
 export type OverviewMode = "raw" | "lookthrough";
 
@@ -21,6 +22,34 @@ export type LookThroughMeta = {
     etfSymbol: string;
     asOfDate: string | null;
   }>;
+};
+
+type ClassificationDimension = "country" | "sector" | "industry" | "currency";
+
+export type ExposureBucket = {
+  key: string;
+  marketValue: number;
+  portfolioWeightPct: number;
+};
+
+export type ClassificationSummary = {
+  classifiedValue: number;
+  unclassifiedValue: number;
+  classifiedPct: number;
+  unclassifiedPct: number;
+};
+
+export type ClassificationBreakdown = {
+  byCountry: ExposureBucket[];
+  bySector: ExposureBucket[];
+  byIndustry: ExposureBucket[];
+  byCurrency: ExposureBucket[];
+  summaries: {
+    country: ClassificationSummary;
+    sector: ClassificationSummary;
+    industry: ClassificationSummary;
+    currency: ClassificationSummary;
+  };
 };
 
 export type OverviewSnapshot = {
@@ -39,6 +68,11 @@ export type OverviewSnapshot = {
   holdings: OverviewHolding[];
   warnings: OverviewWarning[];
   lookThrough: LookThroughMeta | null;
+  classifications: ClassificationBreakdown;
+  filters: {
+    assetKinds: Array<OverviewHolding["kind"]>;
+    currencies: string[];
+  };
 };
 
 function round6(value: number): number {
@@ -53,6 +87,192 @@ function recomputeWeights(holdings: OverviewHolding[], totalValue: number): Over
   }));
   cloned.sort((a, b) => b.marketValue - a.marketValue);
   return cloned;
+}
+
+function readMetadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function normalizeBucketKey(value: string | null | undefined): string {
+  return value ? value : "UNCLASSIFIED";
+}
+
+function summarizeCoverage(params: {
+  buckets: Map<string, number>;
+  denominatorAbs: number;
+}): ClassificationSummary {
+  const unclassifiedValue = Math.abs(params.buckets.get("UNCLASSIFIED") ?? 0);
+  const classifiedValue = Math.max(0, params.denominatorAbs - unclassifiedValue);
+  if (params.denominatorAbs <= 1e-9) {
+    return {
+      classifiedValue: 0,
+      unclassifiedValue: 0,
+      classifiedPct: 100,
+      unclassifiedPct: 0,
+    };
+  }
+  return {
+    classifiedValue: round6(classifiedValue),
+    unclassifiedValue: round6(unclassifiedValue),
+    classifiedPct: round6((classifiedValue / params.denominatorAbs) * 100),
+    unclassifiedPct: round6((unclassifiedValue / params.denominatorAbs) * 100),
+  };
+}
+
+async function buildClassificationBreakdown(params: {
+  holdings: OverviewHolding[];
+  totalValue: number;
+}): Promise<{ classifications: ClassificationBreakdown; warnings: OverviewWarning[] }> {
+  const warnings: OverviewWarning[] = [];
+  const byId = new Map<
+    string,
+    {
+      currency: string | null;
+      country: string | null;
+      sector: string | null;
+      industry: string | null;
+    }
+  >();
+  const bySymbol = new Map<
+    string,
+    {
+      currency: string | null;
+      country: string | null;
+      sector: string | null;
+      industry: string | null;
+    }
+  >();
+
+  const instrumentIds = [...new Set(params.holdings.map((h) => h.instrumentId).filter(Boolean))] as string[];
+  const symbolNeedsLookup = [
+    ...new Set(
+      params.holdings
+        .filter((holding) => !holding.instrumentId && holding.symbol !== "CASH")
+        .map((holding) => holding.symbol.toUpperCase()),
+    ),
+  ];
+
+  const [idRows, symbolRows] = await Promise.all([
+    instrumentIds.length
+      ? prisma.instrument.findMany({
+          where: { id: { in: instrumentIds } },
+          select: { id: true, symbol: true, currency: true, metadataJson: true },
+        })
+      : Promise.resolve([]),
+    symbolNeedsLookup.length
+      ? prisma.instrument.findMany({
+          where: { symbol: { in: symbolNeedsLookup } },
+          select: { symbol: true, currency: true, metadataJson: true },
+          orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+        })
+      : Promise.resolve([]),
+  ]);
+
+  for (const row of idRows) {
+    byId.set(row.id, {
+      currency: row.currency ?? null,
+      country: readMetadataString(row.metadataJson, "country"),
+      sector: readMetadataString(row.metadataJson, "sector"),
+      industry: readMetadataString(row.metadataJson, "industry"),
+    });
+  }
+  for (const row of symbolRows) {
+    const symbolKey = row.symbol.toUpperCase();
+    if (bySymbol.has(symbolKey)) {
+      continue;
+    }
+    bySymbol.set(symbolKey, {
+      currency: row.currency ?? null,
+      country: readMetadataString(row.metadataJson, "country"),
+      sector: readMetadataString(row.metadataJson, "sector"),
+      industry: readMetadataString(row.metadataJson, "industry"),
+    });
+  }
+
+  const country = new Map<string, number>();
+  const sector = new Map<string, number>();
+  const industry = new Map<string, number>();
+  const currency = new Map<string, number>();
+  const denominator = Math.abs(params.totalValue) <= 1e-9 ? 1 : params.totalValue;
+  const denominatorAbs = params.holdings.reduce((sum, h) => sum + Math.abs(h.marketValue), 0);
+
+  const accumulate = (map: Map<string, number>, key: string, value: number) => {
+    map.set(key, (map.get(key) ?? 0) + value);
+  };
+
+  for (const holding of params.holdings) {
+    const metadata =
+      (holding.instrumentId ? byId.get(holding.instrumentId) : null) ??
+      bySymbol.get(holding.symbol.toUpperCase()) ??
+      null;
+
+    const currencyKey = normalizeBucketKey(
+      metadata?.currency ?? (holding.kind === "CASH" ? "USD" : null),
+    );
+    const countryKey = normalizeBucketKey(metadata?.country);
+    const sectorKey = normalizeBucketKey(metadata?.sector);
+    const industryKey = normalizeBucketKey(metadata?.industry);
+
+    accumulate(currency, currencyKey, holding.marketValue);
+    accumulate(country, countryKey, holding.marketValue);
+    accumulate(sector, sectorKey, holding.marketValue);
+    accumulate(industry, industryKey, holding.marketValue);
+  }
+
+  const toBuckets = (map: Map<string, number>): ExposureBucket[] =>
+    [...map.entries()]
+      .map(([key, marketValue]) => ({
+        key,
+        marketValue: round6(marketValue),
+        portfolioWeightPct: round6((marketValue / denominator) * 100),
+      }))
+      .sort((a, b) => b.marketValue - a.marketValue);
+
+  const summaries = {
+    country: summarizeCoverage({ buckets: country, denominatorAbs }),
+    sector: summarizeCoverage({ buckets: sector, denominatorAbs }),
+    industry: summarizeCoverage({ buckets: industry, denominatorAbs }),
+    currency: summarizeCoverage({ buckets: currency, denominatorAbs }),
+  };
+
+  const emitUnclassifiedWarning = (
+    dimension: ClassificationDimension,
+    summary: ClassificationSummary,
+  ) => {
+    if (summary.unclassifiedValue <= 1e-9) {
+      return;
+    }
+    warnings.push({
+      code: "UNCLASSIFIED_EXPOSURE",
+      message: `Unclassified ${dimension} exposure: ${summary.unclassifiedPct.toFixed(2)}%`,
+      instrumentId: null,
+      symbol: `UNCLASSIFIED_${dimension.toUpperCase()}`,
+    });
+  };
+
+  emitUnclassifiedWarning("country", summaries.country);
+  emitUnclassifiedWarning("sector", summaries.sector);
+  emitUnclassifiedWarning("industry", summaries.industry);
+  emitUnclassifiedWarning("currency", summaries.currency);
+
+  return {
+    classifications: {
+      byCountry: toBuckets(country),
+      bySector: toBuckets(sector),
+      byIndustry: toBuckets(industry),
+      byCurrency: toBuckets(currency),
+      summaries,
+    },
+    warnings,
+  };
 }
 
 async function applyLookThrough(params: {
@@ -147,6 +367,7 @@ async function applyLookThrough(params: {
       warnings.push({
         code: "ETF_LOOKTHROUGH_UNAVAILABLE",
         message: `No ETF constituent data for ${etf.symbol} on or before ${params.asOfDate}`,
+        accountId: etf.accountId,
         instrumentId: etf.instrumentId!,
         symbol: etf.symbol,
       });
@@ -160,6 +381,7 @@ async function applyLookThrough(params: {
       warnings.push({
         code: "ETF_LOOKTHROUGH_STALE",
         message: `Using stale ETF constituents for ${etf.symbol} from ${asOfDateKey}`,
+        accountId: etf.accountId,
         instrumentId: etf.instrumentId!,
         symbol: etf.symbol,
       });
@@ -180,6 +402,7 @@ async function applyLookThrough(params: {
       warnings.push({
         code: "ETF_LOOKTHROUGH_UNAVAILABLE",
         message: `ETF constituent dataset is empty for ${etf.symbol}`,
+        accountId: etf.accountId,
         instrumentId: etf.instrumentId!,
         symbol: etf.symbol,
       });
@@ -193,6 +416,7 @@ async function applyLookThrough(params: {
       warnings.push({
         code: "ETF_LOOKTHROUGH_UNAVAILABLE",
         message: `ETF constituent weights invalid for ${etf.symbol}`,
+        accountId: etf.accountId,
         instrumentId: etf.instrumentId!,
         symbol: etf.symbol,
       });
@@ -265,6 +489,8 @@ export async function getOverviewSnapshot(params?: {
   from?: Date;
   to?: Date;
   mode?: OverviewMode;
+  assetKinds?: Array<OverviewHolding["kind"]>;
+  currencies?: string[];
 }): Promise<OverviewSnapshot> {
   const [valuation, performance] = await Promise.all([
     getValuationSnapshotCore({
@@ -281,6 +507,8 @@ export async function getOverviewSnapshot(params?: {
   ]);
 
   const mode = params?.mode ?? "raw";
+  const normalizedAssetKinds = [...new Set(params?.assetKinds ?? [])];
+  const normalizedCurrencies = [...new Set((params?.currencies ?? []).map((c) => c.toUpperCase()))];
   let holdings = valuation.holdings;
   let warnings = [...valuation.warnings];
   let lookThrough: LookThroughMeta | null = null;
@@ -296,6 +524,48 @@ export async function getOverviewSnapshot(params?: {
   }
 
   holdings = recomputeWeights(holdings, valuation.totals.totalValue);
+  if (normalizedAssetKinds.length) {
+    holdings = holdings.filter((holding) => normalizedAssetKinds.includes(holding.kind));
+  }
+  if (normalizedCurrencies.length) {
+    const instrumentIds = [
+      ...new Set(holdings.map((holding) => holding.instrumentId).filter(Boolean)),
+    ] as string[];
+    const instrumentCurrencyById = new Map<string, string>();
+    if (instrumentIds.length) {
+      const instruments = await prisma.instrument.findMany({
+        where: { id: { in: instrumentIds } },
+        select: { id: true, currency: true },
+      });
+      for (const instrument of instruments) {
+        instrumentCurrencyById.set(instrument.id, instrument.currency.toUpperCase());
+      }
+    }
+    holdings = holdings.filter((holding) => {
+      const currency =
+        holding.kind === "CASH"
+          ? "USD"
+          : holding.instrumentId
+            ? instrumentCurrencyById.get(holding.instrumentId) ?? "UNCLASSIFIED"
+            : "UNCLASSIFIED";
+      return normalizedCurrencies.includes(currency);
+    });
+  }
+
+  const classification = await buildClassificationBreakdown({
+    holdings,
+    totalValue: valuation.totals.totalValue,
+  });
+  warnings = warnings.concat(classification.warnings);
+  const hasViewFilters = normalizedAssetKinds.length > 0 || normalizedCurrencies.length > 0;
+  if (!hasViewFilters) {
+    await persistWarningLifecycle({
+      asOfDate: valuation.asOfDate,
+      warnings,
+      accountId: params?.accountId,
+      mode,
+    });
+  }
 
   return {
     asOfDate: valuation.asOfDate,
@@ -313,5 +583,10 @@ export async function getOverviewSnapshot(params?: {
     holdings,
     warnings,
     lookThrough,
+    classifications: classification.classifications,
+    filters: {
+      assetKinds: normalizedAssetKinds,
+      currencies: normalizedCurrencies,
+    },
   };
 }

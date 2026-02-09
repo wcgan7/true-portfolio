@@ -4,6 +4,17 @@ import { DomainValidationError } from "@/src/lib/errors";
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
 import type { PerformancePeriod } from "@/src/lib/services/performance-service";
 import type { OverviewMode } from "@/src/lib/services/overview-service";
+import type { OverviewHolding } from "@/src/lib/services/valuation-core";
+
+const VALID_ASSET_KINDS: Array<OverviewHolding["kind"]> = ["CASH", "STOCK", "ETF", "OPTION", "CUSTOM"];
+
+function parseListParam(url: URL, key: string): string[] {
+  const raw = url.searchParams.getAll(key);
+  return raw
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
 
 export async function GET(req: Request) {
   try {
@@ -12,6 +23,8 @@ export async function GET(req: Request) {
     const asOfDateParam = url.searchParams.get("asOfDate");
     const modeParam = (url.searchParams.get("mode") ?? "raw") as OverviewMode;
     const periodParam = (url.searchParams.get("period") ?? "since_inception") as PerformancePeriod;
+    const assetKindsParam = parseListParam(url, "assetKind").map((item) => item.toUpperCase());
+    const currenciesParam = parseListParam(url, "currency").map((item) => item.toUpperCase());
     const fromParam = url.searchParams.get("from");
     const toParam = url.searchParams.get("to");
     const asOfDate = asOfDateParam ? new Date(asOfDateParam) : undefined;
@@ -33,6 +46,16 @@ export async function GET(req: Request) {
     if (!["raw", "lookthrough"].includes(modeParam)) {
       throw new DomainValidationError("Invalid mode. Use raw or lookthrough.");
     }
+    for (const assetKind of assetKindsParam) {
+      if (!VALID_ASSET_KINDS.includes(assetKind as OverviewHolding["kind"])) {
+        throw new DomainValidationError("Invalid assetKind. Use CASH, STOCK, ETF, OPTION, or CUSTOM.");
+      }
+    }
+    for (const currency of currenciesParam) {
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        throw new DomainValidationError("Invalid currency. Expected 3-letter code like USD.");
+      }
+    }
 
     const snapshot = await getOverviewSnapshot({
       accountId,
@@ -41,6 +64,8 @@ export async function GET(req: Request) {
       period: periodParam,
       from,
       to,
+      assetKinds: assetKindsParam as OverviewHolding["kind"][],
+      currencies: currenciesParam,
     });
     return NextResponse.json({ data: snapshot });
   } catch (error) {

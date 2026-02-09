@@ -11,6 +11,7 @@ test("overview page loads", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Portfolio Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Holdings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Classifications" })).toBeVisible();
 });
 
 test("overview supports look-through mode toggle", async ({ page }) => {
@@ -18,4 +19,15 @@ test("overview supports look-through mode toggle", async ({ page }) => {
   await expect(page.getByText("Mode:")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Look-through Coverage" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Raw Holdings" })).toBeVisible();
+});
+
+test("overview shows metric audit panel when metric query is set", async ({ page }) => {
+  await page.goto("/overview?metric=totalValue");
+  await expect(page.getByRole("heading", { name: "Metric Audit: totalValue" })).toBeVisible();
+});
+
+test("overview supports asset filter links", async ({ page }) => {
+  await page.goto("/overview?assetKind=STOCK");
+  await expect(page.getByText("Asset Filter:")).toBeVisible();
+  await expect(page.getByRole("link", { name: "ETFs" })).toBeVisible();
 });

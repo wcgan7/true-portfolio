@@ -1,4 +1,6 @@
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
+import { getMetricAudit, type AuditMetric } from "@/src/lib/services/audit-service";
+import type { OverviewHolding } from "@/src/lib/services/valuation-core";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -6,11 +8,43 @@ type OverviewPageProps = {
 
 export default async function OverviewPage({ searchParams }: OverviewPageProps) {
   const resolved = (await searchParams) ?? {};
+  const toList = (value: string | string[] | undefined): string[] => {
+    if (!value) return [];
+    const arr = Array.isArray(value) ? value : [value];
+    return arr
+      .flatMap((item) => item.split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
   const modeParam = resolved.mode;
   const modeValue = Array.isArray(modeParam) ? modeParam[0] : modeParam;
   const mode = modeValue === "lookthrough" ? "lookthrough" : "raw";
+  const assetKinds = toList(resolved.assetKind).map((value) => value.toUpperCase()) as Array<
+    OverviewHolding["kind"]
+  >;
+  const currencies = toList(resolved.currency).map((value) => value.toUpperCase());
+  const metricParam = resolved.metric;
+  const metricValue = Array.isArray(metricParam) ? metricParam[0] : metricParam;
+  const metric = ([
+    "totalValue",
+    "marketValue",
+    "cashValue",
+    "realizedPnl",
+    "unrealizedPnl",
+    "mwr",
+    "twr",
+  ] as const).includes(metricValue as AuditMetric)
+    ? (metricValue as AuditMetric)
+    : null;
 
-  const snapshot = await getOverviewSnapshot({ mode });
+  const snapshot = await getOverviewSnapshot({ mode, assetKinds, currencies });
+  const audit = metric
+    ? await getMetricAudit({
+        metric,
+        asOfDate: new Date(`${snapshot.asOfDate}T00:00:00.000Z`),
+        mode,
+      })
+    : null;
 
   return (
     <main style={{ padding: 24 }}>
@@ -20,12 +54,34 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         Mode: <strong>{snapshot.mode}</strong>
       </p>
       <p>
-        <a href="/overview?mode=raw">Raw Holdings</a> |{" "}
-        <a href="/overview?mode=lookthrough">Look-through</a>
+        <a href={`/overview?mode=raw`}>Raw Holdings</a> |{" "}
+        <a href={`/overview?mode=lookthrough`}>Look-through</a>
+      </p>
+      <p>
+        Asset Filter:{" "}
+        <a href={`/overview?mode=${mode}`}>All</a> |{" "}
+        <a href={`/overview?mode=${mode}&assetKind=STOCK`}>Stocks</a> |{" "}
+        <a href={`/overview?mode=${mode}&assetKind=ETF`}>ETFs</a> |{" "}
+        <a href={`/overview?mode=${mode}&assetKind=CASH`}>Cash</a>
+      </p>
+      <p>
+        Currency Filter:{" "}
+        <a href={`/overview?mode=${mode}`}>All</a> |{" "}
+        <a href={`/overview?mode=${mode}&currency=USD`}>USD</a>
       </p>
 
       <section>
         <h2>Totals</h2>
+        <p>
+          Audit:{" "}
+          <a href={`/overview?mode=${mode}&metric=totalValue`}>Total Value</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=marketValue`}>Market Value</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=cashValue`}>Cash Value</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=realizedPnl`}>Realized P&amp;L</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=unrealizedPnl`}>Unrealized P&amp;L</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=mwr`}>MWR</a> |{" "}
+          <a href={`/overview?mode=${mode}&metric=twr`}>TWR</a>
+        </p>
         <ul>
           <li>Total Value: {snapshot.totals.totalValue.toFixed(2)}</li>
           <li>Cash Value: {snapshot.totals.cashValue.toFixed(2)}</li>
@@ -36,6 +92,15 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
           <li>TWR: {snapshot.totals.twr == null ? "N/A" : `${(snapshot.totals.twr * 100).toFixed(2)}%`}</li>
         </ul>
       </section>
+
+      {audit ? (
+        <section>
+          <h2>Metric Audit: {audit.metric}</h2>
+          <p>Value: {audit.value == null ? "N/A" : audit.value.toFixed(6)}</p>
+          <p>Transactions contributing: {audit.contributors.transactions.length}</p>
+          <p>Warnings in scope: {audit.contributors.warnings.length}</p>
+        </section>
+      ) : null}
 
       {snapshot.lookThrough ? (
         <section>
@@ -100,6 +165,50 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
             ))}
           </ul>
         )}
+      </section>
+
+      <section>
+        <h2>Classifications</h2>
+
+        <h3>Country Exposure</h3>
+        <p>Unclassified: {snapshot.classifications.summaries.country.unclassifiedPct.toFixed(2)}%</p>
+        <ul>
+          {snapshot.classifications.byCountry.map((row) => (
+            <li key={`country-${row.key}`}>
+              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
+            </li>
+          ))}
+        </ul>
+
+        <h3>Sector Exposure</h3>
+        <p>Unclassified: {snapshot.classifications.summaries.sector.unclassifiedPct.toFixed(2)}%</p>
+        <ul>
+          {snapshot.classifications.bySector.map((row) => (
+            <li key={`sector-${row.key}`}>
+              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
+            </li>
+          ))}
+        </ul>
+
+        <h3>Industry Exposure</h3>
+        <p>Unclassified: {snapshot.classifications.summaries.industry.unclassifiedPct.toFixed(2)}%</p>
+        <ul>
+          {snapshot.classifications.byIndustry.map((row) => (
+            <li key={`industry-${row.key}`}>
+              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
+            </li>
+          ))}
+        </ul>
+
+        <h3>Currency Exposure</h3>
+        <p>Unclassified: {snapshot.classifications.summaries.currency.unclassifiedPct.toFixed(2)}%</p>
+        <ul>
+          {snapshot.classifications.byCurrency.map((row) => (
+            <li key={`currency-${row.key}`}>
+              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
+            </li>
+          ))}
+        </ul>
       </section>
     </main>
   );

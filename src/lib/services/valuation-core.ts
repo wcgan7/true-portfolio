@@ -5,13 +5,16 @@ import { replayTransactions } from "@/src/lib/portfolio/replay";
 export type OverviewWarningCode =
   | "MISSING_PRICE"
   | "STALE_PRICE_FALLBACK"
+  | "NEGATIVE_CASH"
+  | "UNCLASSIFIED_EXPOSURE"
   | "ETF_LOOKTHROUGH_UNAVAILABLE"
   | "ETF_LOOKTHROUGH_STALE";
 
 export type OverviewWarning = {
   code: OverviewWarningCode;
   message: string;
-  instrumentId: string;
+  accountId?: string;
+  instrumentId: string | null;
   symbol: string;
 };
 
@@ -100,6 +103,7 @@ export async function getValuationSnapshotCore(params?: {
       warnings.push({
         code: "MISSING_PRICE",
         message: `Missing price for ${instrument.symbol} on or before ${asOfDate.toISOString().slice(0, 10)}`,
+        accountId: position.accountId,
         instrumentId: instrument.id,
         symbol: instrument.symbol,
       });
@@ -109,6 +113,7 @@ export async function getValuationSnapshotCore(params?: {
         warnings.push({
           code: "STALE_PRICE_FALLBACK",
           message: `Using stale price for ${instrument.symbol} from ${latestPrice.date.toISOString().slice(0, 10)}`,
+          accountId: position.accountId,
           instrumentId: instrument.id,
           symbol: instrument.symbol,
         });
@@ -140,6 +145,15 @@ export async function getValuationSnapshotCore(params?: {
   for (const [accountId, cash] of Object.entries(replay.cashByAccount)) {
     if (Math.abs(cash) <= 1e-9) {
       continue;
+    }
+    if (cash < -1e-9) {
+      warnings.push({
+        code: "NEGATIVE_CASH",
+        message: `Negative cash balance in account ${accountId}`,
+        accountId,
+        instrumentId: null,
+        symbol: "CASH",
+      });
     }
     holdings.push({
       accountId,

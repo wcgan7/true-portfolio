@@ -145,6 +145,16 @@ describe("/api/overview route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 for invalid assetKind", async () => {
+    const res = await GET(new Request("http://localhost/api/overview?assetKind=BOND"));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for invalid currency code", async () => {
+    const res = await GET(new Request("http://localhost/api/overview?currency=USDX"));
+    expect(res.status).toBe(400);
+  });
+
   it("returns performance metrics for ytd period", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },
@@ -403,5 +413,323 @@ describe("/api/overview route", () => {
       payload.data.warnings.some((warning) => warning.code === "ETF_LOOKTHROUGH_UNAVAILABLE"),
     ).toBe(true);
     expect(payload.data.lookThrough.coveragePct).toBeCloseTo(0, 6);
+  });
+
+  it("emits negative cash warning when account cash is below zero", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Margin-ish", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "TSLA_NEG", name: "TSLA NEG", kind: "STOCK", currency: "USD" },
+    });
+    await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: new Date("2026-01-10"),
+        quantity: 1,
+        price: 100,
+        amount: 100,
+        feeAmount: 0,
+      },
+    });
+    await prisma.pricePoint.create({
+      data: { instrumentId: instrument.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+    });
+
+    const res = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as { data: { warnings: Array<{ code: string }> } };
+    expect(payload.data.warnings.some((warning) => warning.code === "NEGATIVE_CASH")).toBe(true);
+  });
+
+  it("persists warning lifecycle idempotently and resolves cleared warnings", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "AMD_WARN", name: "AMD WARN", kind: "STOCK", currency: "USD" },
+    });
+    await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: new Date("2026-01-10"),
+        quantity: 1,
+        price: 100,
+        amount: 100,
+        feeAmount: 0,
+      },
+    });
+
+    const first = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(first.status).toBe(200);
+    const second = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(second.status).toBe(200);
+
+    const activeWarnings = await prisma.warningEvent.findMany({
+      where: { code: "MISSING_PRICE" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(activeWarnings).toHaveLength(1);
+    expect(activeWarnings[0].resolvedAt).toBeNull();
+    expect(activeWarnings[0].lastSeenAt.toISOString().slice(0, 10)).toBe("2026-01-10");
+
+    await prisma.pricePoint.create({
+      data: { instrumentId: instrument.id, date: new Date("2026-01-10"), close: 101, source: "manual" },
+    });
+    const resolved = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(resolved.status).toBe(200);
+
+    const resolvedWarning = await prisma.warningEvent.findFirst({
+      where: { code: "MISSING_PRICE" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(resolvedWarning).not.toBeNull();
+    expect(resolvedWarning!.resolvedAt?.toISOString().slice(0, 10)).toBe("2026-01-10");
+  });
+
+  it("returns classification breakdowns with unclassified exposure warnings", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const classified = await prisma.instrument.create({
+      data: {
+        symbol: "META_CLASS",
+        name: "Meta Class",
+        kind: "STOCK",
+        currency: "USD",
+        metadataJson: {
+          country: "United States",
+          sector: "Technology",
+          industry: "Internet",
+        },
+      },
+    });
+    const unclassified = await prisma.instrument.create({
+      data: {
+        symbol: "NO_META",
+        name: "No Meta",
+        kind: "STOCK",
+        currency: "USD",
+      },
+    });
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 200,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: classified.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: unclassified.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.createMany({
+      data: [
+        { instrumentId: classified.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+        { instrumentId: unclassified.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+      ],
+    });
+
+    const res = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        classifications: {
+          byCountry: Array<{ key: string; marketValue: number }>;
+          bySector: Array<{ key: string; marketValue: number }>;
+          summaries: { country: { unclassifiedPct: number } };
+        };
+        warnings: Array<{ code: string; symbol: string }>;
+      };
+    };
+
+    expect(payload.data.classifications.byCountry.some((bucket) => bucket.key === "United States")).toBe(
+      true,
+    );
+    expect(payload.data.classifications.byCountry.some((bucket) => bucket.key === "UNCLASSIFIED")).toBe(
+      true,
+    );
+    expect(payload.data.classifications.bySector.some((bucket) => bucket.key === "Technology")).toBe(
+      true,
+    );
+    expect(payload.data.classifications.summaries.country.unclassifiedPct).toBeGreaterThan(0);
+    expect(
+      payload.data.warnings.some(
+        (warning) =>
+          warning.code === "UNCLASSIFIED_EXPOSURE" && warning.symbol === "UNCLASSIFIED_COUNTRY",
+      ),
+    ).toBe(true);
+  });
+
+  it("computes look-through classification using constituent symbol metadata", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const etf = await prisma.instrument.create({
+      data: { symbol: "LOOK_CLASS_ETF", name: "Look Class ETF", kind: "ETF", currency: "USD" },
+    });
+    await prisma.instrument.create({
+      data: {
+        symbol: "CONSTIT_META",
+        name: "Constituent Meta",
+        kind: "STOCK",
+        currency: "USD",
+        metadataJson: {
+          country: "Japan",
+          sector: "Industrials",
+          industry: "Automation",
+        },
+      },
+    });
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: etf.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.create({
+      data: { instrumentId: etf.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+    });
+    await prisma.etfConstituent.create({
+      data: {
+        etfInstrumentId: etf.id,
+        constituentSymbol: "CONSTIT_META",
+        weight: 1,
+        asOfDate: new Date("2026-01-10"),
+        source: "manual",
+      },
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&mode=lookthrough"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        classifications: {
+          byCountry: Array<{ key: string; marketValue: number }>;
+          bySector: Array<{ key: string; marketValue: number }>;
+          byIndustry: Array<{ key: string; marketValue: number }>;
+        };
+      };
+    };
+
+    expect(payload.data.classifications.byCountry.find((bucket) => bucket.key === "Japan")?.marketValue)
+      .toBeCloseTo(100, 6);
+    expect(
+      payload.data.classifications.bySector.find((bucket) => bucket.key === "Industrials")?.marketValue,
+    ).toBeCloseTo(100, 6);
+    expect(
+      payload.data.classifications.byIndustry.find((bucket) => bucket.key === "Automation")?.marketValue,
+    ).toBeCloseTo(100, 6);
+  });
+
+  it("filters holdings by asset kind and currency", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const stock = await prisma.instrument.create({
+      data: { symbol: "FILTER_STOCK", name: "Filter Stock", kind: "STOCK", currency: "USD" },
+    });
+    const etf = await prisma.instrument.create({
+      data: { symbol: "FILTER_ETF", name: "Filter ETF", kind: "ETF", currency: "USD" },
+    });
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 300,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: stock.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: etf.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.createMany({
+      data: [
+        { instrumentId: stock.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+        { instrumentId: etf.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+      ],
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&assetKind=STOCK&currency=USD"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        holdings: Array<{ symbol: string; kind: string }>;
+        filters: { assetKinds: string[]; currencies: string[] };
+      };
+    };
+
+    expect(payload.data.filters.assetKinds).toEqual(["STOCK"]);
+    expect(payload.data.filters.currencies).toEqual(["USD"]);
+    expect(payload.data.holdings.some((h) => h.symbol === "FILTER_STOCK" && h.kind === "STOCK")).toBe(
+      true,
+    );
+    expect(payload.data.holdings.some((h) => h.symbol === "FILTER_ETF")).toBe(false);
+    expect(payload.data.holdings.some((h) => h.kind === "CASH")).toBe(false);
   });
 });
