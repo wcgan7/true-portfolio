@@ -79,5 +79,6 @@ test("valuations page recomputes and lists persisted daily valuations", async ({
   await page.getByTestId("recompute-valuations-btn").click();
 
   await expect(page.getByTestId("valuation-last-result")).toContainText("2026-01-10 to 2026-01-10");
+  await expect(page.getByRole("heading", { name: "Valuation Series" })).toBeVisible();
   await expect(page.getByTestId("valuations-table")).toContainText(accountId);
 });

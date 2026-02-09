@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
 
 type Account = {
   id: string;
@@ -189,6 +190,33 @@ export default function ValuationsPage() {
         <h2>Persisted Daily Valuations</h2>
         {loading ? <p>Loading...</p> : null}
         {!loading && rows.length === 0 ? <p>No rows found.</p> : null}
+        {!loading && rows.length > 0 ? (
+          <div>
+            <h3>Valuation Series</h3>
+            <div style={{ width: "100%", overflowX: "auto" }}>
+              <LineChart
+                width={Math.max(720, rows.length * 80)}
+                height={280}
+                data={rows.map((row) => ({
+                  date: new Date(row.date).toISOString().slice(0, 10),
+                  totalValue: Number(row.totalValue),
+                }))}
+                margin={{ top: 12, right: 16, bottom: 12, left: 12 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis tickFormatter={(value: number) => `$${value.toFixed(0)}`} width={90} />
+                <Tooltip
+                  formatter={(value) => {
+                    const totalValue = Number(value ?? 0);
+                    return [`$${totalValue.toFixed(2)}`, "Total Value"];
+                  }}
+                />
+                <Line type="monotone" dataKey="totalValue" stroke="#0f766e" strokeWidth={2} dot={false} />
+              </LineChart>
+            </div>
+          </div>
+        ) : null}
         {!loading && rows.length > 0 ? (
           <table data-testid="valuations-table">
             <thead>
