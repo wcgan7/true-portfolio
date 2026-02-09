@@ -12,3 +12,10 @@ test("overview page loads", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Totals" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Holdings" })).toBeVisible();
 });
+
+test("overview supports look-through mode toggle", async ({ page }) => {
+  await page.goto("/overview?mode=lookthrough");
+  await expect(page.getByText("Mode:")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Look-through Coverage" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Raw Holdings" })).toBeVisible();
+});

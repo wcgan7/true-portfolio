@@ -140,6 +140,11 @@ describe("/api/overview route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 for invalid mode", async () => {
+    const res = await GET(new Request("http://localhost/api/overview?mode=invalid"));
+    expect(res.status).toBe(400);
+  });
+
   it("returns performance metrics for ytd period", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },
@@ -246,5 +251,157 @@ describe("/api/overview route", () => {
     for (const holding of payload.data.holdings) {
       expect(Number.isFinite(holding.portfolioWeightPct)).toBe(true);
     }
+  });
+
+  it("flattens ETF exposure in lookthrough mode and aggregates overlap", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const etf = await prisma.instrument.create({
+      data: { symbol: "SPY_LT", name: "SPY LT", kind: "ETF", currency: "USD" },
+    });
+    const aapl = await prisma.instrument.create({
+      data: { symbol: "AAPL_LT", name: "Apple LT", kind: "STOCK", currency: "USD" },
+    });
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 150,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: etf.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: aapl.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 50,
+          amount: 50,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.createMany({
+      data: [
+        { instrumentId: etf.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+        { instrumentId: aapl.id, date: new Date("2026-01-10"), close: 50, source: "manual" },
+      ],
+    });
+    await prisma.etfConstituent.createMany({
+      data: [
+        {
+          etfInstrumentId: etf.id,
+          constituentSymbol: "AAPL_LT",
+          weight: 0.5,
+          asOfDate: new Date("2026-01-10"),
+          source: "manual",
+        },
+        {
+          etfInstrumentId: etf.id,
+          constituentSymbol: "MSFT_LT",
+          weight: 0.4,
+          asOfDate: new Date("2026-01-10"),
+          source: "manual",
+        },
+      ],
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&mode=lookthrough"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        mode: string;
+        lookThrough: {
+          coveragePct: number;
+          uncoveredEtfValue: number;
+          staleness: Array<{ etfSymbol: string; asOfDate: string | null }>;
+        } | null;
+        holdings: Array<{ symbol: string; marketValue: number }>;
+      };
+    };
+
+    expect(payload.data.mode).toBe("lookthrough");
+    expect(payload.data.lookThrough).not.toBeNull();
+
+    const aaplHolding = payload.data.holdings.find((h) => h.symbol === "AAPL_LT");
+    const msftHolding = payload.data.holdings.find((h) => h.symbol === "MSFT_LT");
+    const unmapped = payload.data.holdings.find((h) => h.symbol === "UNMAPPED_ETF_EXPOSURE");
+
+    expect(aaplHolding).toBeDefined();
+    expect(msftHolding).toBeDefined();
+    expect(unmapped).toBeDefined();
+    expect(aaplHolding!.marketValue).toBeCloseTo(100, 6); // 50 direct + 50 look-through
+    expect(msftHolding!.marketValue).toBeCloseTo(40, 6);
+    expect(unmapped!.marketValue).toBeCloseTo(10, 6);
+    expect(payload.data.lookThrough!.coveragePct).toBeCloseTo(90, 6);
+    expect(payload.data.lookThrough!.uncoveredEtfValue).toBeCloseTo(10, 6);
+    expect(payload.data.lookThrough!.staleness[0].etfSymbol).toBe("SPY_LT");
+  });
+
+  it("creates uncovered ETF bucket and warning when no constituents exist", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const etf = await prisma.instrument.create({
+      data: { symbol: "QQQ_LT", name: "QQQ LT", kind: "ETF", currency: "USD" },
+    });
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: etf.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.create({
+      data: { instrumentId: etf.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&mode=lookthrough"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        holdings: Array<{ symbol: string; marketValue: number }>;
+        warnings: Array<{ code: string }>;
+        lookThrough: { coveragePct: number };
+      };
+    };
+
+    expect(payload.data.holdings.some((h) => h.symbol === "UNMAPPED_ETF_EXPOSURE")).toBe(true);
+    expect(
+      payload.data.warnings.some((warning) => warning.code === "ETF_LOOKTHROUGH_UNAVAILABLE"),
+    ).toBe(true);
+    expect(payload.data.lookThrough.coveragePct).toBeCloseTo(0, 6);
   });
 });

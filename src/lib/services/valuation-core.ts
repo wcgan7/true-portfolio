@@ -2,7 +2,11 @@ import { prisma } from "@/src/lib/db";
 import { sortTransactionsForReplay } from "@/src/lib/portfolio/ordering";
 import { replayTransactions } from "@/src/lib/portfolio/replay";
 
-export type OverviewWarningCode = "MISSING_PRICE" | "STALE_PRICE_FALLBACK";
+export type OverviewWarningCode =
+  | "MISSING_PRICE"
+  | "STALE_PRICE_FALLBACK"
+  | "ETF_LOOKTHROUGH_UNAVAILABLE"
+  | "ETF_LOOKTHROUGH_STALE";
 
 export type OverviewWarning = {
   code: OverviewWarningCode;
@@ -171,4 +175,3 @@ export async function getValuationSnapshotCore(params?: {
     warnings,
   };
 }
-

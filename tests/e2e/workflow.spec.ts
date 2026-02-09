@@ -18,12 +18,13 @@ test("accounts page creates account and validates empty input", async ({ page })
 
 test("transactions page creates instrument, validates trade fields, and creates transaction", async ({
   page,
+  request,
 }) => {
   const accountName = `E2E Tx Account ${suffix()}`;
-  await page.goto("/accounts");
-  await page.getByTestId("account-name-input").fill(accountName);
-  await page.getByTestId("create-account-btn").click();
-  await expect(page.getByTestId("accounts-table")).toContainText(accountName);
+  const accountResponse = await request.post("/api/accounts", {
+    data: { name: accountName, baseCurrency: "USD" },
+  });
+  expect(accountResponse.ok()).toBeTruthy();
 
   await page.goto("/transactions");
 
@@ -33,7 +34,9 @@ test("transactions page creates instrument, validates trade fields, and creates 
   await page.getByTestId("instrument-kind-select").selectOption("STOCK");
   await page.getByTestId("create-instrument-btn").click();
 
-  await expect(page.getByTestId("tx-account-select")).toContainText(accountName);
+  await expect
+    .poll(async () => page.locator("[data-testid='tx-account-select'] option").allTextContents())
+    .toContain(accountName);
   await page.getByTestId("tx-account-select").selectOption({ label: accountName });
   await page.getByTestId("tx-type-select").selectOption("BUY");
   await page.getByTestId("tx-quantity-input").fill("2");

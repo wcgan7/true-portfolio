@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import { DomainValidationError } from "@/src/lib/errors";
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
 import type { PerformancePeriod } from "@/src/lib/services/performance-service";
+import type { OverviewMode } from "@/src/lib/services/overview-service";
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const accountId = url.searchParams.get("accountId") ?? undefined;
     const asOfDateParam = url.searchParams.get("asOfDate");
+    const modeParam = (url.searchParams.get("mode") ?? "raw") as OverviewMode;
     const periodParam = (url.searchParams.get("period") ?? "since_inception") as PerformancePeriod;
     const fromParam = url.searchParams.get("from");
     const toParam = url.searchParams.get("to");
@@ -28,10 +30,14 @@ export async function GET(req: Request) {
     if (!["since_inception", "ytd", "custom"].includes(periodParam)) {
       throw new DomainValidationError("Invalid period. Use since_inception, ytd, or custom.");
     }
+    if (!["raw", "lookthrough"].includes(modeParam)) {
+      throw new DomainValidationError("Invalid mode. Use raw or lookthrough.");
+    }
 
     const snapshot = await getOverviewSnapshot({
       accountId,
       asOfDate,
+      mode: modeParam,
       period: periodParam,
       from,
       to,
