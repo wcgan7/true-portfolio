@@ -8,10 +8,11 @@ async function seedAccountAndInstrument() {
     data: { name: "Primary", baseCurrency: "USD" },
   });
 
+  const symbolSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
   const instrument = await prisma.instrument.create({
     data: {
-      symbol: "AAPL",
-      name: "Apple Inc.",
+      symbol: `AAPL_${symbolSuffix}`,
+      name: "Apple Inc",
       kind: "STOCK",
       currency: "USD",
     },
@@ -120,6 +121,44 @@ describe("/api/transactions route", () => {
     expect(payload.data).toHaveLength(2);
     expect(new Date(payload.data[0].tradeDate).toISOString()).toBe("2026-01-09T00:00:00.000Z");
     expect(new Date(payload.data[1].tradeDate).toISOString()).toBe("2026-01-11T00:00:00.000Z");
+  });
+
+  it("applies accountId filter in GET /api/transactions", async () => {
+    const first = await seedAccountAndInstrument();
+    const second = await seedAccountAndInstrument();
+
+    await prisma.transaction.create({
+      data: {
+        accountId: first.account.id,
+        instrumentId: first.instrument.id,
+        type: "BUY",
+        tradeDate: new Date("2026-01-09"),
+        quantity: 1,
+        price: 10,
+        amount: 10,
+        feeAmount: 0,
+      },
+    });
+    await prisma.transaction.create({
+      data: {
+        accountId: second.account.id,
+        instrumentId: second.instrument.id,
+        type: "BUY",
+        tradeDate: new Date("2026-01-09"),
+        quantity: 1,
+        price: 10,
+        amount: 10,
+        feeAmount: 0,
+      },
+    });
+
+    const res = await GET(
+      new Request(`http://localhost/api/transactions?accountId=${first.account.id}`),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as { data: Array<{ accountId: string }> };
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0].accountId).toBe(first.account.id);
   });
 
   it("returns 400 for non-existent account id", async () => {

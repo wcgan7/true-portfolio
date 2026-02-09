@@ -4,6 +4,62 @@ import { GET } from "@/app/api/overview/route";
 import { prisma } from "@/src/lib/db";
 
 describe("/api/overview route", () => {
+  it("scopes overview by accountId filter", async () => {
+    const accountA = await prisma.account.create({
+      data: { name: "A", baseCurrency: "USD" },
+    });
+    const accountB = await prisma.account.create({
+      data: { name: "B", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "AAPL", name: "Apple", kind: "STOCK", currency: "USD" },
+    });
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: accountA.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: accountB.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 3,
+          price: 100,
+          amount: 300,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.create({
+      data: {
+        instrumentId: instrument.id,
+        date: new Date("2026-01-10"),
+        close: 100,
+        source: "manual",
+      },
+    });
+
+    const res = await GET(
+      new Request(`http://localhost/api/overview?asOfDate=2026-01-10&accountId=${accountA.id}`),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: { totals: { marketValue: number; cashValue: number }; holdings: Array<{ accountId: string }> };
+    };
+    expect(payload.data.totals.marketValue).toBeCloseTo(100, 6);
+    expect(payload.data.totals.cashValue).toBeCloseTo(-100, 6);
+    expect(payload.data.holdings.every((holding) => holding.accountId === accountA.id)).toBe(true);
+  });
+
   it("returns totals and holdings with stale price warning fallback", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },
@@ -83,5 +139,44 @@ describe("/api/overview route", () => {
     const res = await GET(new Request("http://localhost/api/overview?asOfDate=not-a-date"));
     expect(res.status).toBe(400);
   });
-});
 
+  it("handles zero total value without NaN portfolio weights", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "NFLX", name: "Netflix", kind: "STOCK", currency: "USD" },
+    });
+
+    await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: new Date("2026-01-10"),
+        quantity: 1,
+        price: 100,
+        amount: 100,
+        feeAmount: 0,
+      },
+    });
+    await prisma.pricePoint.create({
+      data: {
+        instrumentId: instrument.id,
+        date: new Date("2026-01-10"),
+        close: 100,
+        source: "manual",
+      },
+    });
+
+    const res = await GET(new Request("http://localhost/api/overview?asOfDate=2026-01-10"));
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: { totals: { totalValue: number }; holdings: Array<{ portfolioWeightPct: number }> };
+    };
+    expect(payload.data.totals.totalValue).toBeCloseTo(0, 6);
+    for (const holding of payload.data.holdings) {
+      expect(Number.isFinite(holding.portfolioWeightPct)).toBe(true);
+    }
+  });
+});

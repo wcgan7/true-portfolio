@@ -22,6 +22,30 @@ async function seedAccountAndInstrument() {
 }
 
 describe("/api/transactions/[id] route", () => {
+  it("returns 400 when patching unknown transaction id", async () => {
+    const { account, instrument } = await seedAccountAndInstrument();
+    const patchReq = new Request("http://localhost/api/transactions/unknown-id", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: "2026-01-11",
+        quantity: 10,
+        price: 100,
+      }),
+    });
+
+    const patchRes = await PATCH(patchReq, {
+      params: Promise.resolve({ id: "unknown-id" }),
+    });
+
+    expect(patchRes.status).toBe(400);
+    const payload = (await patchRes.json()) as { error: string };
+    expect(payload.error).toContain("not found");
+  });
+
   it("rejects patch with duplicate externalRef for same account", async () => {
     const { account, instrument } = await seedAccountAndInstrument();
 

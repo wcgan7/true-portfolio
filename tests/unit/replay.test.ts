@@ -66,5 +66,33 @@ describe("replayTransactions", () => {
     expect(output.cashByAccount.acc).toBeCloseTo(45, 6);
     expect(output.totalRealizedPnl).toBeCloseTo(45, 6);
   });
-});
 
+  it("throws when sell quantity exceeds available lots", () => {
+    expect(() =>
+      replayTransactions([
+        {
+          id: "t1",
+          accountId: "acc",
+          instrumentId: "inst",
+          type: "BUY",
+          tradeDate: new Date("2026-01-01"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          id: "t2",
+          accountId: "acc",
+          instrumentId: "inst",
+          type: "SELL",
+          tradeDate: new Date("2026-01-02"),
+          quantity: 2,
+          price: 100,
+          amount: 200,
+          feeAmount: 0,
+        },
+      ]),
+    ).toThrow("Insufficient lots");
+  });
+});
