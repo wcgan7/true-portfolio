@@ -183,4 +183,60 @@ describe("/api/valuations route", () => {
     const getRes = await GET(new Request("http://localhost/api/valuations?from=bad-date"));
     expect(getRes.status).toBe(400);
   });
+
+  it("marks completeness false when valuation uses missing prices", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "NO_PRICE_VAL", name: "No Price", kind: "STOCK", currency: "USD" },
+    });
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/valuations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: account.id, from: "2026-01-10", to: "2026-01-10" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await prisma.dailyValuation.findFirst({
+      where: { accountId: account.id, date: new Date("2026-01-10") },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.completenessFlag).toBe(false);
+  });
+
+  it("returns 400 for unknown accountId in recompute request", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/valuations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: "missing-account", from: "2026-01-10", to: "2026-01-10" }),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
 });
