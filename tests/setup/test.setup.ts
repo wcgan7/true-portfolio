@@ -5,6 +5,7 @@ import { beforeAll, beforeEach } from "vitest";
 import { prisma } from "@/src/lib/db";
 
 const TABLES = [
+  '"RefreshJob"',
   '"WarningEvent"',
   '"DailyValuation"',
   '"EtfConstituent"',

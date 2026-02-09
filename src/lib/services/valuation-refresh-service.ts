@@ -29,6 +29,16 @@ export type ValuationRefreshRunResult = {
   status: ValuationRefreshStatus;
 };
 
+export type RefreshJobSummary = {
+  id: string;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED_CONFLICT";
+  trigger: "MANUAL" | "SCHEDULED";
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
+  inputJson: unknown;
+};
+
 export const VALUATION_REFRESH_LOCK_KEYS = {
   classId: 41011,
   objectId: 1,
@@ -109,4 +119,68 @@ export async function runValuationRefresh(input: ValuationRefreshInput): Promise
       status,
     };
   });
+}
+
+export async function runValuationRefreshJob(params: {
+  input: ValuationRefreshInput;
+  trigger: "MANUAL" | "SCHEDULED";
+}) {
+  const job = await prisma.refreshJob.create({
+    data: {
+      status: "RUNNING",
+      trigger: params.trigger,
+      inputJson: params.input,
+    },
+    select: { id: true },
+  });
+
+  try {
+    const result = await runValuationRefresh(params.input);
+    await prisma.refreshJob.update({
+      where: { id: job.id },
+      data: {
+        status: "SUCCEEDED",
+        finishedAt: new Date(),
+        resultJson: result,
+      },
+    });
+    return { jobId: job.id, result };
+  } catch (error) {
+    const status = error instanceof ConcurrencyConflictError ? "SKIPPED_CONFLICT" : "FAILED";
+    await prisma.refreshJob.update({
+      where: { id: job.id },
+      data: {
+        status,
+        finishedAt: new Date(),
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+    throw error;
+  }
+}
+
+export async function listRefreshJobs(limit = 20): Promise<RefreshJobSummary[]> {
+  const rows = await prisma.refreshJob.findMany({
+    orderBy: { startedAt: "desc" },
+    take: Math.max(1, Math.min(limit, 100)),
+    select: {
+      id: true,
+      status: true,
+      trigger: true,
+      startedAt: true,
+      finishedAt: true,
+      errorMessage: true,
+      inputJson: true,
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    trigger: row.trigger,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString() ?? null,
+    errorMessage: row.errorMessage,
+    inputJson: row.inputJson,
+  }));
 }

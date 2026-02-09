@@ -36,6 +36,18 @@ enum WarningSeverity {
   ERROR
 }
 
+enum RefreshJobStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED_CONFLICT
+}
+
+enum RefreshJobTrigger {
+  MANUAL
+  SCHEDULED
+}
+
 model Account {
   id           String         @id @default(cuid())
   name         String
@@ -148,4 +160,19 @@ model WarningEvent {
 
   @@index([date])
   @@index([code])
+}
+
+model RefreshJob {
+  id           String            @id @default(cuid())
+  status       RefreshJobStatus
+  trigger      RefreshJobTrigger
+  startedAt    DateTime          @default(now())
+  finishedAt   DateTime?
+  errorMessage String?
+  inputJson    Json?
+  resultJson   Json?
+
+  @@index([startedAt])
+  @@index([status])
+  @@index([trigger])
 }

@@ -42,6 +42,15 @@ type RefreshRunResult = {
   status: RefreshStatus;
 };
 
+type RefreshJob = {
+  id: string;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED_CONFLICT";
+  trigger: "MANUAL" | "SCHEDULED";
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
+};
+
 export default function ValuationsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rows, setRows] = useState<DailyValuation[]>([]);
@@ -55,6 +64,7 @@ export default function ValuationsPage() {
   const [lastResult, setLastResult] = useState<RecomputeResult | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | null>(null);
   const [lastRefreshRun, setLastRefreshRun] = useState<RefreshRunResult | null>(null);
+  const [refreshJobs, setRefreshJobs] = useState<RefreshJob[]>([]);
 
   async function loadAccounts() {
     const res = await fetch("/api/accounts");
@@ -88,11 +98,20 @@ export default function ValuationsPage() {
     setRefreshStatus(payload.data);
   }
 
+  async function loadRefreshJobs() {
+    const res = await fetch("/api/valuations/refresh/jobs?limit=10");
+    const payload = (await res.json()) as { data?: RefreshJob[]; error?: string };
+    if (!res.ok || !payload.data) {
+      throw new Error(payload.error ?? "Failed to load refresh jobs");
+    }
+    setRefreshJobs(payload.data);
+  }
+
   async function loadAll() {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadAccounts(), loadRows(), loadRefreshStatus()]);
+      await Promise.all([loadAccounts(), loadRows(), loadRefreshStatus(), loadRefreshJobs()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load page");
     } finally {
@@ -170,6 +189,7 @@ export default function ValuationsPage() {
       setLastRefreshRun(payload.data);
       setRefreshStatus(payload.data.status);
       await loadRows({ accountId: accountId || undefined, from: from || undefined, to: to || undefined });
+      await loadRefreshJobs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run full refresh");
     } finally {
@@ -272,6 +292,36 @@ export default function ValuationsPage() {
           </p>
         </section>
       ) : null}
+
+      <section>
+        <h2>Recent Refresh Jobs</h2>
+        {refreshJobs.length === 0 ? (
+          <p>No jobs yet.</p>
+        ) : (
+          <table data-testid="refresh-jobs-table">
+            <thead>
+              <tr>
+                <th>Started</th>
+                <th>Trigger</th>
+                <th>Status</th>
+                <th>Finished</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {refreshJobs.map((job) => (
+                <tr key={job.id}>
+                  <td>{new Date(job.startedAt).toISOString()}</td>
+                  <td>{job.trigger}</td>
+                  <td>{job.status}</td>
+                  <td>{job.finishedAt ? new Date(job.finishedAt).toISOString() : "running"}</td>
+                  <td>{job.errorMessage ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <section>
         <h2>Persisted Daily Valuations</h2>
