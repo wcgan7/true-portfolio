@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { Pool } from "pg";
 
 import { GET, POST } from "@/app/api/valuations/refresh/route";
 import { prisma } from "@/src/lib/db";
+import { VALUATION_REFRESH_LOCK_KEYS } from "@/src/lib/services/valuation-refresh-service";
 
 describe("/api/valuations/refresh route", () => {
   it("returns status payload even when never run", async () => {
@@ -87,6 +89,40 @@ describe("/api/valuations/refresh route", () => {
 
     if (original) {
       process.env.POLYGON_API_KEY = original;
+    }
+  });
+
+  it("returns 409 when refresh lock is already held", async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("DATABASE_URL is required");
+    }
+    const pool = new Pool({ connectionString });
+    const client = await pool.connect();
+    await client.query("SELECT pg_advisory_lock($1, $2)", [
+      VALUATION_REFRESH_LOCK_KEYS.classId,
+      VALUATION_REFRESH_LOCK_KEYS.objectId,
+    ]);
+    try {
+      const res = await POST(
+        new Request("http://localhost/api/valuations/refresh", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            symbols: ["NO_SUCH_SYMBOL"],
+            from: "2026-01-10",
+            to: "2026-01-10",
+          }),
+        }),
+      );
+      expect(res.status).toBe(409);
+    } finally {
+      await client.query("SELECT pg_advisory_unlock($1, $2)", [
+        VALUATION_REFRESH_LOCK_KEYS.classId,
+        VALUATION_REFRESH_LOCK_KEYS.objectId,
+      ]);
+      client.release();
+      await pool.end();
     }
   });
 });

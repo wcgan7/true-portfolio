@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { DomainValidationError } from "@/src/lib/errors";
+import { ConcurrencyConflictError, DomainValidationError } from "@/src/lib/errors";
 import { valuationRefreshSchema } from "@/src/lib/schemas/valuation-refresh";
 import {
   getValuationRefreshStatus,
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
     }
     if (error instanceof DomainValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof ConcurrencyConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
