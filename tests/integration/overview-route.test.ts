@@ -140,6 +140,74 @@ describe("/api/overview route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns performance metrics for ytd period", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const instrument = await prisma.instrument.create({
+      data: { symbol: "QQQ", name: "QQQ", kind: "ETF", currency: "USD" },
+    });
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-01"),
+          amount: 1000,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-01"),
+          quantity: 10,
+          price: 100,
+          amount: 1000,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.createMany({
+      data: [
+        {
+          instrumentId: instrument.id,
+          date: new Date("2026-01-01"),
+          close: 100,
+          source: "manual",
+        },
+        {
+          instrumentId: instrument.id,
+          date: new Date("2026-01-02"),
+          close: 110,
+          source: "manual",
+        },
+      ],
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-02&period=ytd"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        totals: { twr: number | null; mwr: number | null };
+        performance: { period: { type: string } };
+      };
+    };
+    expect(payload.data.performance.period.type).toBe("ytd");
+    expect(payload.data.totals.twr).toBeCloseTo(0.1, 6);
+    expect(payload.data.totals.mwr).not.toBeNull();
+  });
+
+  it("returns 400 for custom period without from/to", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&period=custom"),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("handles zero total value without NaN portfolio weights", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },

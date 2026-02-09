@@ -16,6 +16,8 @@ export default async function OverviewPage() {
           <li>Market Value: {snapshot.totals.marketValue.toFixed(2)}</li>
           <li>Realized P&amp;L: {snapshot.totals.realizedPnl.toFixed(2)}</li>
           <li>Unrealized P&amp;L: {snapshot.totals.unrealizedPnl.toFixed(2)}</li>
+          <li>MWR: {snapshot.totals.mwr == null ? "N/A" : `${(snapshot.totals.mwr * 100).toFixed(2)}%`}</li>
+          <li>TWR: {snapshot.totals.twr == null ? "N/A" : `${(snapshot.totals.twr * 100).toFixed(2)}%`}</li>
         </ul>
       </section>
 
@@ -62,4 +64,3 @@ export default async function OverviewPage() {
     </main>
   );
 }
-
