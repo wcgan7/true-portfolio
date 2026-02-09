@@ -665,6 +665,61 @@ describe("/api/overview route", () => {
     ).toBeCloseTo(100, 6);
   });
 
+  it("emits unknown ticker warning for look-through constituent without instrument master record", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const etf = await prisma.instrument.create({
+      data: { symbol: "UNKNOWN_LT_ETF", name: "Unknown LT ETF", kind: "ETF", currency: "USD" },
+    });
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: etf.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.create({
+      data: { instrumentId: etf.id, date: new Date("2026-01-10"), close: 100, source: "manual" },
+    });
+    await prisma.etfConstituent.create({
+      data: {
+        etfInstrumentId: etf.id,
+        constituentSymbol: "UNLISTED_XYZ",
+        weight: 1,
+        asOfDate: new Date("2026-01-10"),
+        source: "manual",
+      },
+    });
+
+    const res = await GET(
+      new Request("http://localhost/api/overview?asOfDate=2026-01-10&mode=lookthrough"),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: { warnings: Array<{ code: string; symbol: string }> };
+    };
+    expect(
+      payload.data.warnings.some(
+        (warning) => warning.code === "UNKNOWN_TICKER" && warning.symbol === "UNLISTED_XYZ",
+      ),
+    ).toBe(true);
+  });
+
   it("filters holdings by asset kind and currency", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },

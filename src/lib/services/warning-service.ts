@@ -12,7 +12,11 @@ type PersistWarningsInput = {
 };
 
 function severityForCode(code: OverviewWarning["code"]): "INFO" | "WARNING" | "ERROR" {
-  if (code === "MISSING_PRICE" || code === "ETF_LOOKTHROUGH_UNAVAILABLE") {
+  if (
+    code === "MISSING_PRICE" ||
+    code === "ETF_LOOKTHROUGH_UNAVAILABLE" ||
+    code === "UNKNOWN_TICKER"
+  ) {
     return "ERROR";
   }
   return "WARNING";

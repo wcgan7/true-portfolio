@@ -201,6 +201,7 @@ async function buildClassificationBreakdown(params: {
   const sector = new Map<string, number>();
   const industry = new Map<string, number>();
   const currency = new Map<string, number>();
+  const unknownSymbols = new Set<string>();
   const denominator = Math.abs(params.totalValue) <= 1e-9 ? 1 : params.totalValue;
   const denominatorAbs = params.holdings.reduce((sum, h) => sum + Math.abs(h.marketValue), 0);
 
@@ -213,6 +214,10 @@ async function buildClassificationBreakdown(params: {
       (holding.instrumentId ? byId.get(holding.instrumentId) : null) ??
       bySymbol.get(holding.symbol.toUpperCase()) ??
       null;
+
+    if (!holding.instrumentId && holding.symbol !== "CASH" && !metadata) {
+      unknownSymbols.add(holding.symbol.toUpperCase());
+    }
 
     const currencyKey = normalizeBucketKey(
       metadata?.currency ?? (holding.kind === "CASH" ? "USD" : null),
@@ -262,6 +267,14 @@ async function buildClassificationBreakdown(params: {
   emitUnclassifiedWarning("sector", summaries.sector);
   emitUnclassifiedWarning("industry", summaries.industry);
   emitUnclassifiedWarning("currency", summaries.currency);
+  for (const symbol of unknownSymbols) {
+    warnings.push({
+      code: "UNKNOWN_TICKER",
+      message: `Unknown ticker in exposure mapping: ${symbol}`,
+      instrumentId: null,
+      symbol,
+    });
+  }
 
   return {
     classifications: {
