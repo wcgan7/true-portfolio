@@ -63,6 +63,13 @@ List persisted valuation rows:
 curl "http://localhost:3000/api/valuations?from=2026-01-01&to=2026-01-31"
 ```
 
+Run full pipeline (refresh prices + recompute valuations):
+```bash
+curl -X POST http://localhost:3000/api/valuations/refresh \
+  -H "content-type: application/json" \
+  -d '{"from":"2026-01-01","to":"2026-01-31"}'
+```
+
 ### Testing
 
 Run unit + integration tests with coverage:

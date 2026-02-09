@@ -27,6 +27,21 @@ type RecomputeResult = {
   accountRowsUpserted: number;
 };
 
+type RefreshStatus = {
+  lastPriceFetchedAt: string | null;
+  lastValuationMaterializedAt: string | null;
+  lastValuationDate: string | null;
+};
+
+type RefreshRunResult = {
+  price: {
+    pointsUpserted: number;
+    processedSymbols: string[];
+  };
+  valuation: RecomputeResult;
+  status: RefreshStatus;
+};
+
 export default function ValuationsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rows, setRows] = useState<DailyValuation[]>([]);
@@ -35,8 +50,11 @@ export default function ValuationsPage() {
   const [to, setTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<RecomputeResult | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | null>(null);
+  const [lastRefreshRun, setLastRefreshRun] = useState<RefreshRunResult | null>(null);
 
   async function loadAccounts() {
     const res = await fetch("/api/accounts");
@@ -61,11 +79,20 @@ export default function ValuationsPage() {
     setRows(payload.data);
   }
 
+  async function loadRefreshStatus() {
+    const res = await fetch("/api/valuations/refresh");
+    const payload = (await res.json()) as { data?: RefreshStatus; error?: string };
+    if (!res.ok || !payload.data) {
+      throw new Error(payload.error ?? "Failed to load refresh status");
+    }
+    setRefreshStatus(payload.data);
+  }
+
   async function loadAll() {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadAccounts(), loadRows()]);
+      await Promise.all([loadAccounts(), loadRows(), loadRefreshStatus()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load page");
     } finally {
@@ -119,6 +146,37 @@ export default function ValuationsPage() {
     }
   }
 
+  async function onRunFullRefresh() {
+    setError(null);
+    if (from && to && from > to) {
+      setError("from must be <= to");
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/valuations/refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountId: accountId || undefined,
+          from: from || undefined,
+          to: to || undefined,
+        }),
+      });
+      const payload = (await res.json()) as { data?: RefreshRunResult; error?: string };
+      if (!res.ok || !payload.data) {
+        throw new Error(payload.error ?? "Failed to run full refresh");
+      }
+      setLastRefreshRun(payload.data);
+      setRefreshStatus(payload.data.status);
+      await loadRows({ accountId: accountId || undefined, from: from || undefined, to: to || undefined });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run full refresh");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <main style={{ padding: 24 }}>
       <h1>Valuations</h1>
@@ -164,6 +222,14 @@ export default function ValuationsPage() {
             <button type="submit" disabled={submitting} data-testid="recompute-valuations-btn">
               {submitting ? "Recomputing..." : "Recompute"}
             </button>
+            <button
+              type="button"
+              onClick={() => void onRunFullRefresh()}
+              disabled={refreshing}
+              data-testid="run-full-refresh-btn"
+            >
+              {refreshing ? "Refreshing..." : "Refresh Prices + Recompute"}
+            </button>
             <button type="button" onClick={() => void onApplyFilter()} data-testid="load-valuations-btn">
               Load Rows
             </button>
@@ -182,6 +248,27 @@ export default function ValuationsPage() {
           <h2>Last Recompute</h2>
           <p data-testid="valuation-last-result">
             {lastResult.from} to {lastResult.to} | dates={lastResult.datesProcessed} | rows={lastResult.rowsUpserted}
+          </p>
+        </section>
+      ) : null}
+
+      {refreshStatus ? (
+        <section>
+          <h2>Last Pipeline Status</h2>
+          <p data-testid="valuation-refresh-status">
+            Last prices fetched: {refreshStatus.lastPriceFetchedAt ?? "never"} | Last materialized:{" "}
+            {refreshStatus.lastValuationMaterializedAt ?? "never"} | Last valuation date:{" "}
+            {refreshStatus.lastValuationDate ?? "never"}
+          </p>
+        </section>
+      ) : null}
+
+      {lastRefreshRun ? (
+        <section>
+          <h2>Last Full Refresh</h2>
+          <p data-testid="valuation-refresh-run-result">
+            prices={lastRefreshRun.price.pointsUpserted} points, symbols=
+            {lastRefreshRun.price.processedSymbols.length}, rows={lastRefreshRun.valuation.rowsUpserted}
           </p>
         </section>
       ) : null}

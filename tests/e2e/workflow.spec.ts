@@ -73,6 +73,7 @@ test("valuations page recomputes and lists persisted daily valuations", async ({
   });
 
   await page.goto("/valuations");
+  await expect(page.getByTestId("valuation-refresh-status")).toBeVisible();
   await page.getByTestId("valuation-account-select").selectOption({ label: accountName });
   await page.getByTestId("valuation-from-input").fill("2026-01-10");
   await page.getByTestId("valuation-to-input").fill("2026-01-10");
