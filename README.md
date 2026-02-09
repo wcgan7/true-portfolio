@@ -43,6 +43,23 @@ npm run prisma:generate
 npm run prisma:studio
 ```
 
+### Testing
+
+Run unit + integration tests with coverage:
+```bash
+npm run test:coverage
+```
+
+Run end-to-end tests:
+```bash
+npm run test:e2e
+```
+
+Run the full local suite:
+```bash
+npm run test:all
+```
+
 ### Planning Docs
 
 - `/Users/gan/Documents/true-portfolio/design_docs/design_v0.md`
