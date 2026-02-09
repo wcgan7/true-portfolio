@@ -49,6 +49,20 @@ npm run prisma:studio
 npm run db:seed
 ```
 
+### Daily Valuation Materialization
+
+Recompute and persist daily valuation rows:
+```bash
+curl -X POST http://localhost:3000/api/valuations \
+  -H "content-type: application/json" \
+  -d '{"from":"2026-01-01","to":"2026-01-31"}'
+```
+
+List persisted valuation rows:
+```bash
+curl "http://localhost:3000/api/valuations?from=2026-01-01&to=2026-01-31"
+```
+
 ### Testing
 
 Run unit + integration tests with coverage:

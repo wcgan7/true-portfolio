@@ -42,5 +42,5 @@ test("overview renders exposure charts and top-n controls", async ({ page }) => 
   await page.goto("/overview?topN=5");
   await expect(page.getByRole("heading", { name: "Exposure Charts (Top 5)" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Holdings Concentration" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "20" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "20", exact: true })).toBeVisible();
 });
