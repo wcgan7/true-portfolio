@@ -43,6 +43,12 @@ Then verify recent jobs:
 curl -sS "http://localhost:3000/api/valuations/refresh/jobs?limit=10"
 ```
 
+Jobs API supports server-side filters/pagination:
+- `limit` (default 20, max 100)
+- `offset` (default 0)
+- `status` (`RUNNING|SUCCEEDED|FAILED|SKIPPED_CONFLICT`)
+- `trigger` (`MANUAL|SCHEDULED`)
+
 ## Scheduler Wiring
 
 Use any scheduler (Vercel Cron, GitHub Actions, Cloud Scheduler, etc.) to call the endpoint. Keep cadence conservative in MVP (for example every 15-60 minutes during market hours).

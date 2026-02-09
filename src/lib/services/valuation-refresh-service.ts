@@ -39,6 +39,16 @@ export type RefreshJobSummary = {
   inputJson: unknown;
 };
 
+export type RefreshJobFilters = {
+  status?: RefreshJobSummary["status"];
+  trigger?: RefreshJobSummary["trigger"];
+};
+
+export type RefreshJobListParams = RefreshJobFilters & {
+  limit?: number;
+  offset?: number;
+};
+
 export const VALUATION_REFRESH_LOCK_KEYS = {
   classId: 41011,
   objectId: 1,
@@ -159,10 +169,22 @@ export async function runValuationRefreshJob(params: {
   }
 }
 
-export async function listRefreshJobs(limit = 20): Promise<RefreshJobSummary[]> {
+function buildRefreshJobWhere(filters: RefreshJobFilters) {
+  return {
+    status: filters.status,
+    trigger: filters.trigger,
+  };
+}
+
+export async function listRefreshJobs(params: RefreshJobListParams = {}): Promise<RefreshJobSummary[]> {
+  const limit = Math.max(1, Math.min(params.limit ?? 20, 100));
+  const offset = Math.max(0, params.offset ?? 0);
+  const where = buildRefreshJobWhere(params);
   const rows = await prisma.refreshJob.findMany({
+    where,
     orderBy: { startedAt: "desc" },
-    take: Math.max(1, Math.min(limit, 100)),
+    skip: offset,
+    take: limit,
     select: {
       id: true,
       status: true,
@@ -183,4 +205,8 @@ export async function listRefreshJobs(limit = 20): Promise<RefreshJobSummary[]> 
     errorMessage: row.errorMessage,
     inputJson: row.inputJson,
   }));
+}
+
+export async function countRefreshJobs(filters: RefreshJobFilters = {}): Promise<number> {
+  return prisma.refreshJob.count({ where: buildRefreshJobWhere(filters) });
 }

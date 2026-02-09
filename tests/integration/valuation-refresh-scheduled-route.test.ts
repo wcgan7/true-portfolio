@@ -96,13 +96,62 @@ describe("/api/valuations/refresh/scheduled + jobs routes", () => {
     const invalidLimitRes = await GETJobs(
       new Request("http://localhost/api/valuations/refresh/jobs?limit=not-a-number"),
     );
-    expect(invalidLimitRes.status).toBe(200);
-    const invalidPayload = (await invalidLimitRes.json()) as { data: Array<{ id: string }> };
-    expect(invalidPayload.data.length).toBeGreaterThanOrEqual(3);
+    expect(invalidLimitRes.status).toBe(400);
 
     const zeroLimitRes = await GETJobs(new Request("http://localhost/api/valuations/refresh/jobs?limit=0"));
     expect(zeroLimitRes.status).toBe(200);
     const zeroPayload = (await zeroLimitRes.json()) as { data: Array<{ id: string }> };
     expect(zeroPayload.data.length).toBe(1);
+  });
+
+  it("supports jobs filtering and pagination metadata", async () => {
+    const jan1 = new Date("2026-01-01T00:00:00.000Z");
+    const jan2 = new Date("2026-01-02T00:00:00.000Z");
+    const jan3 = new Date("2026-01-03T00:00:00.000Z");
+
+    const [job1, job2] = await Promise.all([
+      prisma.refreshJob.create({
+        data: { status: "SUCCEEDED", trigger: "MANUAL", startedAt: jan1, finishedAt: jan1 },
+      }),
+      prisma.refreshJob.create({
+        data: { status: "FAILED", trigger: "SCHEDULED", startedAt: jan2, finishedAt: jan2 },
+      }),
+      prisma.refreshJob.create({
+        data: { status: "SKIPPED_CONFLICT", trigger: "MANUAL", startedAt: jan3, finishedAt: jan3 },
+      }),
+    ]);
+
+    const failedRes = await GETJobs(
+      new Request("http://localhost/api/valuations/refresh/jobs?status=FAILED"),
+    );
+    expect(failedRes.status).toBe(200);
+    const failedPayload = (await failedRes.json()) as {
+      data: Array<{ id: string; status: string }>;
+      meta: { total: number; hasMore: boolean };
+    };
+    expect(failedPayload.data).toHaveLength(1);
+    expect(failedPayload.data[0]?.id).toBe(job2.id);
+    expect(failedPayload.meta.total).toBe(1);
+    expect(failedPayload.meta.hasMore).toBe(false);
+
+    const manualPagedRes = await GETJobs(
+      new Request("http://localhost/api/valuations/refresh/jobs?trigger=MANUAL&limit=1&offset=1"),
+    );
+    expect(manualPagedRes.status).toBe(200);
+    const manualPagedPayload = (await manualPagedRes.json()) as {
+      data: Array<{ id: string }>;
+      meta: { total: number; hasMore: boolean; limit: number; offset: number };
+    };
+    expect(manualPagedPayload.meta.total).toBe(2);
+    expect(manualPagedPayload.meta.limit).toBe(1);
+    expect(manualPagedPayload.meta.offset).toBe(1);
+    expect(manualPagedPayload.meta.hasMore).toBe(false);
+    expect(manualPagedPayload.data).toHaveLength(1);
+    expect(manualPagedPayload.data[0]?.id).toBe(job1.id);
+
+    const invalidStatusRes = await GETJobs(
+      new Request("http://localhost/api/valuations/refresh/jobs?status=bad_value"),
+    );
+    expect(invalidStatusRes.status).toBe(400);
   });
 });
