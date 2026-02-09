@@ -255,6 +255,7 @@ Request validation:
 5. Pricing integration
 - Polygon client
 - manual refresh route and upsert pipeline
+- scheduled refresh route + operations runbook (`/Users/gan/Documents/true-portfolio/design_docs/scheduled_refresh_runbook.md`)
 
 6. ETF flattening
 - curated constituent ingestion path

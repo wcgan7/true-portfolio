@@ -105,6 +105,7 @@ export default function ValuationsPage() {
       throw new Error(payload.error ?? "Failed to load refresh jobs");
     }
     setRefreshJobs(payload.data);
+    return payload.data;
   }
 
   async function loadAll() {
@@ -123,6 +124,36 @@ export default function ValuationsPage() {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!refreshJobs.some((job) => job.status === "RUNNING")) {
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const jobs = await loadRefreshJobs();
+        const stillRunning = jobs.some((job) => job.status === "RUNNING");
+        if (!stillRunning) {
+          await Promise.all([
+            loadRefreshStatus(),
+            loadRows({ accountId: accountId || undefined, from: from || undefined, to: to || undefined }),
+          ]);
+        }
+      } catch {
+        // Best-effort polling: keep the existing UI stable if polling temporarily fails.
+      }
+    };
+
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [refreshJobs, accountId, from, to]);
 
   async function onRecompute(event: FormEvent) {
     event.preventDefault();
