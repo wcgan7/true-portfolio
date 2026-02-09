@@ -22,6 +22,64 @@ async function seedAccountAndInstrument() {
 }
 
 describe("/api/transactions/[id] route", () => {
+  it("rejects patch with duplicate externalRef for same account", async () => {
+    const { account, instrument } = await seedAccountAndInstrument();
+
+    const firstRes = await POST(
+      new Request("http://localhost/api/transactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: "2026-01-10",
+          quantity: 10,
+          price: 100,
+          externalRef: "same-ref",
+        }),
+      }),
+    );
+    const secondRes = await POST(
+      new Request("http://localhost/api/transactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: "2026-01-11",
+          quantity: 10,
+          price: 100,
+          externalRef: "other-ref",
+        }),
+      }),
+    );
+
+    const first = (await firstRes.json()) as { data: { id: string } };
+    const second = (await secondRes.json()) as { data: { id: string } };
+
+    const patchReq = new Request(`http://localhost/api/transactions/${second.data.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: "2026-01-11",
+        quantity: 10,
+        price: 100,
+        externalRef: "same-ref",
+      }),
+    });
+
+    const patchRes = await PATCH(patchReq, {
+      params: Promise.resolve({ id: second.data.id }),
+    });
+    expect(first.data.id).toBeTruthy();
+    expect(patchRes.status).toBe(400);
+  });
+
   it("updates transaction when edit remains position-safe", async () => {
     const { account, instrument } = await seedAccountAndInstrument();
 

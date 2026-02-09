@@ -122,7 +122,7 @@ describe("/api/transactions route", () => {
     expect(new Date(payload.data[1].tradeDate).toISOString()).toBe("2026-01-11T00:00:00.000Z");
   });
 
-  it("returns 500 for non-existent account id", async () => {
+  it("returns 400 for non-existent account id", async () => {
     const { instrument } = await seedAccountAndInstrument();
     const req = new Request("http://localhost/api/transactions", {
       method: "POST",
@@ -138,6 +138,66 @@ describe("/api/transactions route", () => {
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects BUY against CASH instrument kind", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    const cashInstrument = await prisma.instrument.create({
+      data: { symbol: "USD", name: "US Dollar", kind: "CASH", currency: "USD" },
+    });
+
+    const req = new Request("http://localhost/api/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: account.id,
+        instrumentId: cashInstrument.id,
+        type: "BUY",
+        tradeDate: "2026-01-10",
+        quantity: 1,
+        price: 1,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const payload = (await res.json()) as { error: string };
+    expect(payload.error).toContain("CASH");
+  });
+
+  it("rejects duplicate externalRef per account", async () => {
+    const { account, instrument } = await seedAccountAndInstrument();
+    const body = {
+      accountId: account.id,
+      instrumentId: instrument.id,
+      type: "BUY",
+      tradeDate: "2026-01-10",
+      quantity: 1,
+      price: 10,
+      externalRef: "broker-123",
+    };
+
+    const first = await POST(
+      new Request("http://localhost/api/transactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(first.status).toBe(201);
+
+    const second = await POST(
+      new Request("http://localhost/api/transactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(second.status).toBe(400);
+    const payload = (await second.json()) as { error: string };
+    expect(payload.error).toContain("Duplicate externalRef");
   });
 });

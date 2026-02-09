@@ -15,6 +15,54 @@ function toNumber(value: unknown): number {
   return Number(value);
 }
 
+async function assertAccountExists(accountId: string) {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { id: true },
+  });
+  if (!account) {
+    throw new DomainValidationError(`Account ${accountId} does not exist`);
+  }
+}
+
+async function assertInstrumentValidForTrade(instrumentId: string) {
+  const instrument = await prisma.instrument.findUnique({
+    where: { id: instrumentId },
+    select: { id: true, kind: true },
+  });
+  if (!instrument) {
+    throw new DomainValidationError(`Instrument ${instrumentId} does not exist`);
+  }
+  if (instrument.kind === "CASH") {
+    throw new DomainValidationError("BUY/SELL does not support CASH instruments");
+  }
+}
+
+async function assertExternalRefUnique(params: {
+  accountId: string;
+  externalRef?: string;
+  excludeTransactionId?: string;
+}) {
+  if (!params.externalRef) {
+    return;
+  }
+
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      accountId: params.accountId,
+      externalRef: params.externalRef,
+      ...(params.excludeTransactionId ? { id: { not: params.excludeTransactionId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    throw new DomainValidationError(
+      `Duplicate externalRef '${params.externalRef}' for account ${params.accountId}`,
+    );
+  }
+}
+
 async function assertNoNegativePosition(params: {
   accountId: string;
   instrumentId: string;
@@ -61,7 +109,14 @@ async function assertNoNegativePosition(params: {
 }
 
 export async function createTransaction(input: CreateTransactionInput) {
+  await assertAccountExists(input.accountId);
+  await assertExternalRefUnique({
+    accountId: input.accountId,
+    externalRef: input.externalRef,
+  });
+
   if ((input.type === "BUY" || input.type === "SELL") && input.instrumentId) {
+    await assertInstrumentValidForTrade(input.instrumentId);
     await assertNoNegativePosition({
       accountId: input.accountId,
       instrumentId: input.instrumentId,
@@ -99,8 +154,15 @@ export async function updateTransaction(id: string, input: CreateTransactionInpu
   if (!existing) {
     throw new DomainValidationError("Transaction not found");
   }
+  await assertAccountExists(input.accountId);
+  await assertExternalRefUnique({
+    accountId: input.accountId,
+    externalRef: input.externalRef,
+    excludeTransactionId: id,
+  });
 
   if ((input.type === "BUY" || input.type === "SELL") && input.instrumentId) {
+    await assertInstrumentValidForTrade(input.instrumentId);
     await assertNoNegativePosition({
       accountId: input.accountId,
       instrumentId: input.instrumentId,

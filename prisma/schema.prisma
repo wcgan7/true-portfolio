@@ -85,6 +85,7 @@ model Transaction {
 
   @@index([accountId, tradeDate])
   @@index([instrumentId, tradeDate])
+  @@unique([accountId, externalRef])
 }
 
 model PricePoint {
