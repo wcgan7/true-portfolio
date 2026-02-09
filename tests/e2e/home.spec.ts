@@ -32,6 +32,12 @@ test("overview supports asset filter links", async ({ page }) => {
   await expect(page.getByRole("link", { name: "ETFs" })).toBeVisible();
 });
 
+test("overview exposes account filter controls", async ({ page }) => {
+  await page.goto("/overview");
+  await expect(page.getByText("Account:")).toBeVisible();
+  await expect(page.getByRole("link", { name: "All" }).first()).toBeVisible();
+});
+
 test("overview renders exposure charts and top-n controls", async ({ page }) => {
   await page.goto("/overview?topN=5");
   await expect(page.getByRole("heading", { name: "Exposure Charts (Top 5)" })).toBeVisible();

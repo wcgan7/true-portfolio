@@ -2,6 +2,7 @@ import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
 import { getMetricAudit, type AuditMetric } from "@/src/lib/services/audit-service";
 import type { OverviewHolding } from "@/src/lib/services/valuation-core";
 import { ExposureCharts } from "@/app/overview/exposure-charts";
+import { listAccounts } from "@/src/lib/services/account-service";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -20,6 +21,8 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   const modeParam = resolved.mode;
   const modeValue = Array.isArray(modeParam) ? modeParam[0] : modeParam;
   const mode = modeValue === "lookthrough" ? "lookthrough" : "raw";
+  const accountIdParam = resolved.accountId;
+  const accountId = Array.isArray(accountIdParam) ? accountIdParam[0] : accountIdParam;
   const assetKinds = toList(resolved.assetKind).map((value) => value.toUpperCase()) as Array<
     OverviewHolding["kind"]
   >;
@@ -42,7 +45,8 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
     ? (metricValue as AuditMetric)
     : null;
 
-  const snapshot = await getOverviewSnapshot({ mode, assetKinds, currencies });
+  const snapshot = await getOverviewSnapshot({ mode, assetKinds, currencies, accountId });
+  const accounts = await listAccounts();
   const aggregatedHoldings = [...snapshot.holdings]
     .reduce(
       (map, holding) => {
@@ -70,8 +74,28 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         metric,
         asOfDate: new Date(`${snapshot.asOfDate}T00:00:00.000Z`),
         mode,
+        accountId,
       })
     : null;
+
+  const buildOverviewHref = (overrides: Record<string, string | null | undefined>) => {
+    const params = new URLSearchParams();
+    const base = {
+      mode,
+      metric: metric ?? null,
+      accountId: accountId ?? null,
+      assetKind: assetKinds.join(",") || null,
+      currency: currencies.join(",") || null,
+      topN: String(topN),
+      ...overrides,
+    };
+    for (const [key, value] of Object.entries(base)) {
+      if (value == null || value === "") continue;
+      params.set(key, value);
+    }
+    const query = params.toString();
+    return query ? `/overview?${query}` : "/overview";
+  };
 
   return (
     <main style={{ padding: 24 }}>
@@ -81,38 +105,46 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         Mode: <strong>{snapshot.mode}</strong>
       </p>
       <p>
-        <a href={`/overview?mode=raw`}>Raw Holdings</a> |{" "}
-        <a href={`/overview?mode=lookthrough`}>Look-through</a>
+        <a href={buildOverviewHref({ mode: "raw" })}>Raw Holdings</a> |{" "}
+        <a href={buildOverviewHref({ mode: "lookthrough" })}>Look-through</a>
+      </p>
+      <p>
+        Account: <a href={buildOverviewHref({ accountId: null })}>All</a>{" "}
+        {accounts.map((account) => (
+          <span key={account.id}>
+            | <a href={buildOverviewHref({ accountId: account.id })}>{account.name}</a>{" "}
+          </span>
+        ))}
       </p>
       <p>
         Asset Filter:{" "}
-        <a href={`/overview?mode=${mode}`}>All</a> |{" "}
-        <a href={`/overview?mode=${mode}&assetKind=STOCK`}>Stocks</a> |{" "}
-        <a href={`/overview?mode=${mode}&assetKind=ETF`}>ETFs</a> |{" "}
-        <a href={`/overview?mode=${mode}&assetKind=CASH`}>Cash</a>
+        <a href={buildOverviewHref({ assetKind: null })}>All</a> |{" "}
+        <a href={buildOverviewHref({ assetKind: "STOCK" })}>Stocks</a> |{" "}
+        <a href={buildOverviewHref({ assetKind: "ETF" })}>ETFs</a> |{" "}
+        <a href={buildOverviewHref({ assetKind: "CASH" })}>Cash</a>
       </p>
       <p>
         Currency Filter:{" "}
-        <a href={`/overview?mode=${mode}`}>All</a> |{" "}
-        <a href={`/overview?mode=${mode}&currency=USD`}>USD</a>
+        <a href={buildOverviewHref({ currency: null })}>All</a> |{" "}
+        <a href={buildOverviewHref({ currency: "USD" })}>USD</a>
       </p>
       <p>
-        Top-N: <a href={`/overview?mode=${mode}&topN=5`}>5</a> |{" "}
-        <a href={`/overview?mode=${mode}&topN=10`}>10</a> |{" "}
-        <a href={`/overview?mode=${mode}&topN=20`}>20</a>
+        Top-N: <a href={buildOverviewHref({ topN: "5" })}>5</a> |{" "}
+        <a href={buildOverviewHref({ topN: "10" })}>10</a> |{" "}
+        <a href={buildOverviewHref({ topN: "20" })}>20</a>
       </p>
 
       <section>
         <h2>Totals</h2>
         <p>
           Audit:{" "}
-          <a href={`/overview?mode=${mode}&metric=totalValue`}>Total Value</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=marketValue`}>Market Value</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=cashValue`}>Cash Value</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=realizedPnl`}>Realized P&amp;L</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=unrealizedPnl`}>Unrealized P&amp;L</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=mwr`}>MWR</a> |{" "}
-          <a href={`/overview?mode=${mode}&metric=twr`}>TWR</a>
+          <a href={buildOverviewHref({ metric: "totalValue" })}>Total Value</a> |{" "}
+          <a href={buildOverviewHref({ metric: "marketValue" })}>Market Value</a> |{" "}
+          <a href={buildOverviewHref({ metric: "cashValue" })}>Cash Value</a> |{" "}
+          <a href={buildOverviewHref({ metric: "realizedPnl" })}>Realized P&amp;L</a> |{" "}
+          <a href={buildOverviewHref({ metric: "unrealizedPnl" })}>Unrealized P&amp;L</a> |{" "}
+          <a href={buildOverviewHref({ metric: "mwr" })}>MWR</a> |{" "}
+          <a href={buildOverviewHref({ metric: "twr" })}>TWR</a>
         </p>
         <ul>
           <li>Total Value: {snapshot.totals.totalValue.toFixed(2)}</li>
