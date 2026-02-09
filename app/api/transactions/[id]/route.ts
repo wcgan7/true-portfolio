@@ -3,22 +3,19 @@ import { ZodError } from "zod";
 
 import { DomainValidationError } from "@/src/lib/errors";
 import { createTransactionSchema } from "@/src/lib/schemas/transaction";
-import { createTransaction, listTransactions } from "@/src/lib/services/transaction-service";
+import { updateTransaction } from "@/src/lib/services/transaction-service";
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const accountId = url.searchParams.get("accountId") ?? undefined;
+type Params = {
+  params: Promise<{ id: string }>;
+};
 
-  const transactions = await listTransactions(accountId);
-  return NextResponse.json({ data: transactions });
-}
-
-export async function POST(req: Request) {
+export async function PATCH(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const payload = await req.json();
     const input = createTransactionSchema.parse(payload);
-    const transaction = await createTransaction(input);
-    return NextResponse.json({ data: transaction }, { status: 201 });
+    const transaction = await updateTransaction(id, input);
+    return NextResponse.json({ data: transaction }, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(
@@ -29,7 +26,7 @@ export async function POST(req: Request) {
     if (error instanceof DomainValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+

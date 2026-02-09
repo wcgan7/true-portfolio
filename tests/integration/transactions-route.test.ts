@@ -21,6 +21,28 @@ async function seedAccountAndInstrument() {
 }
 
 describe("/api/transactions route", () => {
+  it("rejects oversell when position would go negative", async () => {
+    const { account, instrument } = await seedAccountAndInstrument();
+
+    const req = new Request("http://localhost/api/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: account.id,
+        instrumentId: instrument.id,
+        type: "SELL",
+        tradeDate: "2026-01-10",
+        quantity: 1,
+        price: 10,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const payload = (await res.json()) as { error: string };
+    expect(payload.error).toContain("negative position");
+  });
+
   it("rejects invalid trade payloads", async () => {
     const { account } = await seedAccountAndInstrument();
     const req = new Request("http://localhost/api/transactions", {
@@ -98,5 +120,24 @@ describe("/api/transactions route", () => {
     expect(payload.data).toHaveLength(2);
     expect(new Date(payload.data[0].tradeDate).toISOString()).toBe("2026-01-09T00:00:00.000Z");
     expect(new Date(payload.data[1].tradeDate).toISOString()).toBe("2026-01-11T00:00:00.000Z");
+  });
+
+  it("returns 500 for non-existent account id", async () => {
+    const { instrument } = await seedAccountAndInstrument();
+    const req = new Request("http://localhost/api/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: "non-existent-account-id",
+        instrumentId: instrument.id,
+        type: "BUY",
+        tradeDate: "2026-01-10",
+        quantity: 1,
+        price: 10,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(500);
   });
 });
