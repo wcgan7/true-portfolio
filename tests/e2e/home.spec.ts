@@ -10,7 +10,7 @@ test("overview page loads", async ({ page }) => {
   await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "Portfolio Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Holdings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Holdings", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Classifications" })).toBeVisible();
 });
 
@@ -30,4 +30,11 @@ test("overview supports asset filter links", async ({ page }) => {
   await page.goto("/overview?assetKind=STOCK");
   await expect(page.getByText("Asset Filter:")).toBeVisible();
   await expect(page.getByRole("link", { name: "ETFs" })).toBeVisible();
+});
+
+test("overview renders exposure charts and top-n controls", async ({ page }) => {
+  await page.goto("/overview?topN=5");
+  await expect(page.getByRole("heading", { name: "Exposure Charts (Top 5)" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Holdings Concentration" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "20" })).toBeVisible();
 });

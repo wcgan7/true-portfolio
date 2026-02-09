@@ -1,6 +1,7 @@
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
 import { getMetricAudit, type AuditMetric } from "@/src/lib/services/audit-service";
 import type { OverviewHolding } from "@/src/lib/services/valuation-core";
+import { ExposureCharts } from "@/app/overview/exposure-charts";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -25,6 +26,10 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   const currencies = toList(resolved.currency).map((value) => value.toUpperCase());
   const metricParam = resolved.metric;
   const metricValue = Array.isArray(metricParam) ? metricParam[0] : metricParam;
+  const topNParam = resolved.topN;
+  const topNRaw = Array.isArray(topNParam) ? topNParam[0] : topNParam;
+  const parsedTopN = topNRaw ? Number(topNRaw) : 10;
+  const topN = Number.isFinite(parsedTopN) ? Math.max(3, Math.min(25, Math.floor(parsedTopN))) : 10;
   const metric = ([
     "totalValue",
     "marketValue",
@@ -38,6 +43,28 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
     : null;
 
   const snapshot = await getOverviewSnapshot({ mode, assetKinds, currencies });
+  const aggregatedHoldings = [...snapshot.holdings]
+    .reduce(
+      (map, holding) => {
+        const existing = map.get(holding.symbol);
+        if (!existing) {
+          map.set(holding.symbol, {
+            key: holding.symbol,
+            marketValue: holding.marketValue,
+            portfolioWeightPct: holding.portfolioWeightPct,
+          });
+          return map;
+        }
+        existing.marketValue += holding.marketValue;
+        existing.portfolioWeightPct += holding.portfolioWeightPct;
+        return map;
+      },
+      new Map<string, { key: string; marketValue: number; portfolioWeightPct: number }>(),
+    )
+    .values();
+  const topHoldingRows = [...aggregatedHoldings]
+    .sort((a, b) => b.marketValue - a.marketValue)
+    .slice(0, topN);
   const audit = metric
     ? await getMetricAudit({
         metric,
@@ -68,6 +95,11 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         Currency Filter:{" "}
         <a href={`/overview?mode=${mode}`}>All</a> |{" "}
         <a href={`/overview?mode=${mode}&currency=USD`}>USD</a>
+      </p>
+      <p>
+        Top-N: <a href={`/overview?mode=${mode}&topN=5`}>5</a> |{" "}
+        <a href={`/overview?mode=${mode}&topN=10`}>10</a> |{" "}
+        <a href={`/overview?mode=${mode}&topN=20`}>20</a>
       </p>
 
       <section>
@@ -153,6 +185,15 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
           </table>
         )}
       </section>
+
+      <ExposureCharts
+        topN={topN}
+        holdings={topHoldingRows}
+        countries={snapshot.classifications.byCountry.slice(0, topN)}
+        sectors={snapshot.classifications.bySector.slice(0, topN)}
+        industries={snapshot.classifications.byIndustry.slice(0, topN)}
+        currencies={snapshot.classifications.byCurrency.slice(0, topN)}
+      />
 
       <section>
         <h2>Warnings</h2>
