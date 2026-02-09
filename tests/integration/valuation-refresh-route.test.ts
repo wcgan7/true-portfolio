@@ -6,6 +6,13 @@ import { prisma } from "@/src/lib/db";
 import { VALUATION_REFRESH_LOCK_KEYS } from "@/src/lib/services/valuation-refresh-service";
 
 describe("/api/valuations/refresh route", () => {
+  async function latestRefreshJob() {
+    return prisma.refreshJob.findFirst({
+      orderBy: { startedAt: "desc" },
+      select: { status: true, trigger: true, errorMessage: true, resultJson: true },
+    });
+  }
+
   it("returns status payload even when never run", async () => {
     const res = await GET();
     expect(res.status).toBe(200);
@@ -62,6 +69,11 @@ describe("/api/valuations/refresh route", () => {
     expect(payload.data.valuation.rowsUpserted).toBeGreaterThan(0);
     expect(payload.data.status.lastValuationMaterializedAt).not.toBeNull();
     expect(payload.data.status.lastValuationDate).toBe("2026-01-10");
+
+    const job = await latestRefreshJob();
+    expect(job?.trigger).toBe("MANUAL");
+    expect(job?.status).toBe("SUCCEEDED");
+    expect(job?.resultJson).toBeTruthy();
   });
 
   it("returns 400 when polygon key is missing and active symbols require refresh", async () => {
@@ -86,6 +98,13 @@ describe("/api/valuations/refresh route", () => {
     );
 
     expect(res.status).toBe(400);
+    const payload = (await res.json()) as { error: string };
+    expect(payload.error).toContain("POLYGON_API_KEY");
+
+    const job = await latestRefreshJob();
+    expect(job?.trigger).toBe("MANUAL");
+    expect(job?.status).toBe("FAILED");
+    expect(job?.errorMessage).toContain("POLYGON_API_KEY");
 
     if (original) {
       process.env.POLYGON_API_KEY = original;
@@ -116,6 +135,13 @@ describe("/api/valuations/refresh route", () => {
         }),
       );
       expect(res.status).toBe(409);
+      const payload = (await res.json()) as { error: string };
+      expect(payload.error).toContain("already in progress");
+
+      const job = await latestRefreshJob();
+      expect(job?.trigger).toBe("MANUAL");
+      expect(job?.status).toBe("SKIPPED_CONFLICT");
+      expect(job?.errorMessage).toContain("already in progress");
     } finally {
       await client.query("SELECT pg_advisory_unlock($1, $2)", [
         VALUATION_REFRESH_LOCK_KEYS.classId,
