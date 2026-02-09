@@ -52,3 +52,32 @@ test("transactions page creates instrument, validates trade fields, and creates 
   await expect(page.getByTestId("transactions-table")).toContainText(symbol);
   await expect(page.getByTestId("transactions-table")).toContainText("BUY");
 });
+
+test("valuations page recomputes and lists persisted daily valuations", async ({ page, request }) => {
+  const accountName = `E2E Val Account ${suffix()}`;
+  const accountRes = await request.post("/api/accounts", {
+    data: { name: accountName, baseCurrency: "USD" },
+  });
+  expect(accountRes.ok()).toBeTruthy();
+  const accountPayload = (await accountRes.json()) as { data: { id: string } };
+  const accountId = accountPayload.data.id;
+
+  await request.post("/api/transactions", {
+    data: {
+      accountId,
+      type: "DEPOSIT",
+      tradeDate: "2026-01-10",
+      amount: 100,
+      feeAmount: 0,
+    },
+  });
+
+  await page.goto("/valuations");
+  await page.getByTestId("valuation-account-select").selectOption({ label: accountName });
+  await page.getByTestId("valuation-from-input").fill("2026-01-10");
+  await page.getByTestId("valuation-to-input").fill("2026-01-10");
+  await page.getByTestId("recompute-valuations-btn").click();
+
+  await expect(page.getByTestId("valuation-last-result")).toContainText("2026-01-10 to 2026-01-10");
+  await expect(page.getByTestId("valuations-table")).toContainText(accountId);
+});

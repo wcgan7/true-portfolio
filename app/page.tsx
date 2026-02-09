@@ -12,6 +12,9 @@ export default function Home() {
       <p>
         <a href="/transactions">Open Transactions</a>
       </p>
+      <p>
+        <a href="/valuations">Open Valuations</a>
+      </p>
     </main>
   );
 }
