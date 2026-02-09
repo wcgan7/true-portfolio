@@ -270,6 +270,7 @@ Request validation:
 - warning lifecycle
 - error and empty states
 - consistency checks
+- release acceptance gate documented in `/Users/gan/Documents/true-portfolio/design_docs/v1_acceptance_checklist.md`
 
 ## Test Plan
 
@@ -293,6 +294,7 @@ Request validation:
 - verify overview metrics/charts render and are coherent
 - switch raw/look-through and validate coverage/staleness indicators
 - open drill-down and verify traceability to transactions
+- run full acceptance command (`npm run test:acceptance:v1`) and pass workflow `.github/workflows/v1-acceptance-live.yml`
 
 ## Explicit Future Extensions
 - options lifecycle support

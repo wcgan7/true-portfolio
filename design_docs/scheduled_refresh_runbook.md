@@ -97,3 +97,4 @@ Recommended alert policy:
 - Concurrency is protected by advisory lock; overlapping schedules are safe and return `409`.
 - `SKIPPED_CONFLICT` is expected if a refresh is already active.
 - Keep `VALUATION_REFRESH_CRON_SECRET` rotated and scoped as a secret in your deployment platform.
+- For full v1 sign-off steps, see `/Users/gan/Documents/true-portfolio/design_docs/v1_acceptance_checklist.md`.
