@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum InstrumentKind {
+  CASH
+  STOCK
+  ETF
+  OPTION
+  CUSTOM
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  FEE
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum WarningSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+model Account {
+  id           String         @id @default(cuid())
+  name         String
+  baseCurrency String         @default("USD")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  transactions Transaction[]
+  valuations   DailyValuation[]
+  warnings     WarningEvent[]
+}
+
+model Instrument {
+  id              String          @id @default(cuid())
+  symbol          String
+  name            String
+  kind            InstrumentKind
+  currency        String          @default("USD")
+  metadataJson    Json?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  transactions    Transaction[]
+  pricePoints     PricePoint[]
+  etfConstituents EtfConstituent[]
+  warnings        WarningEvent[]
+
+  @@unique([symbol, kind])
+}
+
+model Transaction {
+  id           String          @id @default(cuid())
+  accountId    String
+  instrumentId String?
+  type         TransactionType
+  tradeDate    DateTime
+  settleDate   DateTime?
+  quantity     Decimal?        @db.Decimal(20, 6)
+  price        Decimal?        @db.Decimal(20, 6)
+  amount       Decimal         @db.Decimal(20, 6)
+  feeAmount    Decimal         @default(0) @db.Decimal(20, 6)
+  notes        String?
+  externalRef  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  account      Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  instrument   Instrument?     @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, tradeDate])
+  @@index([instrumentId, tradeDate])
+}
+
+model PricePoint {
+  id           String     @id @default(cuid())
+  instrumentId String
+  date         DateTime
+  close        Decimal    @db.Decimal(20, 6)
+  source       String     @default("polygon")
+  fetchedAt    DateTime   @default(now())
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([instrumentId, date, source])
+  @@index([date])
+}
+
+model EtfConstituent {
+  id                String     @id @default(cuid())
+  etfInstrumentId   String
+  constituentSymbol String
+  weight            Decimal    @db.Decimal(10, 8)
+  asOfDate          DateTime
+  source            String
+  ingestedAt        DateTime   @default(now())
+  instrument        Instrument @relation(fields: [etfInstrumentId], references: [id], onDelete: Cascade)
+
+  @@index([etfInstrumentId, asOfDate])
+  @@index([constituentSymbol])
+}
+
+model DailyValuation {
+  id               String    @id @default(cuid())
+  date             DateTime
+  accountId        String?
+  cashValue        Decimal   @db.Decimal(20, 6)
+  marketValue      Decimal   @db.Decimal(20, 6)
+  totalValue       Decimal   @db.Decimal(20, 6)
+  completenessFlag Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  account          Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@unique([date, accountId])
+  @@index([date])
+}
+
+model WarningEvent {
+  id           String          @id @default(cuid())
+  date         DateTime
+  code         String
+  severity     WarningSeverity @default(WARNING)
+  accountId    String?
+  instrumentId String?
+  metadataJson Json?
+  createdAt    DateTime        @default(now())
+  account      Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  instrument   Instrument?     @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([code])
+}

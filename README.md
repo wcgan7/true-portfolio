@@ -1,0 +1,49 @@
+## True Portfolio
+
+Trust-first portfolio analytics web app.
+
+### Stack
+- Next.js + TypeScript
+- Prisma ORM
+- Postgres (Docker)
+
+### Local Setup
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Copy env file:
+```bash
+cp .env.example .env
+```
+
+3. Start Postgres:
+```bash
+npm run db:up
+```
+
+4. Run initial migration:
+```bash
+npm run prisma:migrate -- --name init
+```
+
+5. Start app:
+```bash
+npm run dev
+```
+
+App URL: [http://localhost:3000](http://localhost:3000)
+
+### Prisma Commands
+
+```bash
+npm run prisma:generate
+npm run prisma:studio
+```
+
+### Planning Docs
+
+- `/Users/gan/Documents/true-portfolio/design_docs/design_v0.md`
+- `/Users/gan/Documents/true-portfolio/design_docs/implementation_plan_v1.md`
