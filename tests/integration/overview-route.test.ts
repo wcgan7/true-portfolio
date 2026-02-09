@@ -787,4 +787,53 @@ describe("/api/overview route", () => {
     expect(payload.data.holdings.some((h) => h.symbol === "FILTER_ETF")).toBe(false);
     expect(payload.data.holdings.some((h) => h.kind === "CASH")).toBe(false);
   });
+
+  it("returns freshness metadata for scoped overview", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Primary", baseCurrency: "USD" },
+    });
+    await prisma.dailyValuation.create({
+      data: {
+        date: new Date("2026-01-10"),
+        accountId: account.id,
+        cashValue: 10,
+        marketValue: 20,
+        totalValue: 30,
+        completenessFlag: true,
+      },
+    });
+    await prisma.pricePoint.create({
+      data: {
+        instrumentId: (
+          await prisma.instrument.create({
+            data: { symbol: "FRESH_META", name: "Fresh Meta", kind: "STOCK", currency: "USD" },
+          })
+        ).id,
+        date: new Date("2026-01-10"),
+        close: 100,
+        source: "manual",
+      },
+    });
+
+    const res = await GET(
+      new Request(`http://localhost/api/overview?asOfDate=2026-01-10&accountId=${account.id}`),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        freshness: {
+          scopedValuationExists: boolean;
+          scopedValuationComplete: boolean | null;
+          scopedValuationMaterializedAt: string | null;
+          lastValuationDate: string | null;
+          lastPriceFetchedAt: string | null;
+        };
+      };
+    };
+    expect(payload.data.freshness.scopedValuationExists).toBe(true);
+    expect(payload.data.freshness.scopedValuationComplete).toBe(true);
+    expect(payload.data.freshness.scopedValuationMaterializedAt).not.toBeNull();
+    expect(payload.data.freshness.lastValuationDate).toBe("2026-01-10");
+    expect(payload.data.freshness.lastPriceFetchedAt).not.toBeNull();
+  });
 });

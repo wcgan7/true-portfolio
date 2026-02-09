@@ -10,6 +10,7 @@ test("overview page loads", async ({ page }) => {
   await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "Portfolio Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data Freshness" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Holdings", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Classifications" })).toBeVisible();
 });

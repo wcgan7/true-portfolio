@@ -19,7 +19,7 @@ describe("/api/valuations/refresh route", () => {
     expect(payload.data.lastValuationDate).toBeNull();
   });
 
-  it("runs full refresh when no instruments need polygon calls", async () => {
+  it("runs full refresh when requested symbols do not match tracked instruments", async () => {
     const account = await prisma.account.create({
       data: { name: "Primary", baseCurrency: "USD" },
     });
@@ -37,14 +37,18 @@ describe("/api/valuations/refresh route", () => {
       new Request("http://localhost/api/valuations/refresh", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ from: "2026-01-10", to: "2026-01-10" }),
+        body: JSON.stringify({
+          symbols: ["NO_SUCH_SYMBOL"],
+          from: "2026-01-10",
+          to: "2026-01-10",
+        }),
       }),
     );
 
     expect(res.status).toBe(200);
     const payload = (await res.json()) as {
       data: {
-        price: { pointsUpserted: number; processedSymbols: string[] };
+        price: { pointsUpserted: number; processedSymbols: string[]; missingSymbols: string[] };
         valuation: { rowsUpserted: number };
         status: { lastValuationMaterializedAt: string | null; lastValuationDate: string | null };
       };
@@ -52,6 +56,7 @@ describe("/api/valuations/refresh route", () => {
 
     expect(payload.data.price.pointsUpserted).toBe(0);
     expect(payload.data.price.processedSymbols).toHaveLength(0);
+    expect(payload.data.price.missingSymbols).toContain("NO_SUCH_SYMBOL");
     expect(payload.data.valuation.rowsUpserted).toBeGreaterThan(0);
     expect(payload.data.status.lastValuationMaterializedAt).not.toBeNull();
     expect(payload.data.status.lastValuationDate).toBe("2026-01-10");

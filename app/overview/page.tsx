@@ -157,6 +157,25 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         </ul>
       </section>
 
+      <section>
+        <h2>Data Freshness</h2>
+        <ul>
+          <li>Scoped Valuation Exists: {snapshot.freshness.scopedValuationExists ? "yes" : "no"}</li>
+          <li>
+            Scoped Valuation Complete:{" "}
+            {snapshot.freshness.scopedValuationComplete == null
+              ? "unknown"
+              : snapshot.freshness.scopedValuationComplete
+                ? "yes"
+                : "no"}
+          </li>
+          <li>Scoped Materialized At: {snapshot.freshness.scopedValuationMaterializedAt ?? "never"}</li>
+          <li>Last Materialization: {snapshot.freshness.lastValuationMaterializedAt ?? "never"}</li>
+          <li>Last Valuation Date: {snapshot.freshness.lastValuationDate ?? "never"}</li>
+          <li>Last Price Fetch: {snapshot.freshness.lastPriceFetchedAt ?? "never"}</li>
+        </ul>
+      </section>
+
       {audit ? (
         <section>
           <h2>Metric Audit: {audit.metric}</h2>

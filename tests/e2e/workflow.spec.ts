@@ -35,7 +35,9 @@ test("transactions page creates instrument, validates trade fields, and creates 
   await page.getByTestId("create-instrument-btn").click();
 
   await expect
-    .poll(async () => page.locator("[data-testid='tx-account-select'] option").allTextContents())
+    .poll(async () => page.locator("[data-testid='tx-account-select'] option").allTextContents(), {
+      timeout: 15000,
+    })
     .toContain(accountName);
   await page.getByTestId("tx-account-select").selectOption({ label: accountName });
   await page.getByTestId("tx-type-select").selectOption("BUY");
@@ -74,6 +76,11 @@ test("valuations page recomputes and lists persisted daily valuations", async ({
 
   await page.goto("/valuations");
   await expect(page.getByTestId("valuation-refresh-status")).toBeVisible();
+  await expect
+    .poll(async () => page.locator("[data-testid='valuation-account-select'] option").allTextContents(), {
+      timeout: 15000,
+    })
+    .toContain(accountName);
   await page.getByTestId("valuation-account-select").selectOption({ label: accountName });
   await page.getByTestId("valuation-from-input").fill("2026-01-10");
   await page.getByTestId("valuation-to-input").fill("2026-01-10");

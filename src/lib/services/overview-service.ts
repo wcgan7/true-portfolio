@@ -73,6 +73,14 @@ export type OverviewSnapshot = {
     assetKinds: Array<OverviewHolding["kind"]>;
     currencies: string[];
   };
+  freshness: {
+    scopedValuationExists: boolean;
+    scopedValuationComplete: boolean | null;
+    scopedValuationMaterializedAt: string | null;
+    lastValuationMaterializedAt: string | null;
+    lastValuationDate: string | null;
+    lastPriceFetchedAt: string | null;
+  };
 };
 
 function round6(value: number): number {
@@ -570,6 +578,26 @@ export async function getOverviewSnapshot(params?: {
     totalValue: valuation.totals.totalValue,
   });
   warnings = warnings.concat(classification.warnings);
+  const scopedValuation = await prisma.dailyValuation.findFirst({
+    where: {
+      date: new Date(`${valuation.asOfDate}T00:00:00.000Z`),
+      accountId: params?.accountId ?? null,
+    },
+    select: {
+      completenessFlag: true,
+      createdAt: true,
+    },
+  });
+  const [latestValuation, latestPrice] = await Promise.all([
+    prisma.dailyValuation.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, date: true },
+    }),
+    prisma.pricePoint.findFirst({
+      orderBy: { fetchedAt: "desc" },
+      select: { fetchedAt: true },
+    }),
+  ]);
   const hasViewFilters = normalizedAssetKinds.length > 0 || normalizedCurrencies.length > 0;
   if (!hasViewFilters) {
     await persistWarningLifecycle({
@@ -600,6 +628,14 @@ export async function getOverviewSnapshot(params?: {
     filters: {
       assetKinds: normalizedAssetKinds,
       currencies: normalizedCurrencies,
+    },
+    freshness: {
+      scopedValuationExists: Boolean(scopedValuation),
+      scopedValuationComplete: scopedValuation?.completenessFlag ?? null,
+      scopedValuationMaterializedAt: scopedValuation?.createdAt.toISOString() ?? null,
+      lastValuationMaterializedAt: latestValuation?.createdAt.toISOString() ?? null,
+      lastValuationDate: latestValuation?.date.toISOString().slice(0, 10) ?? null,
+      lastPriceFetchedAt: latestPrice?.fetchedAt.toISOString() ?? null,
     },
   };
 }
