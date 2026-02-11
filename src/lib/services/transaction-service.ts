@@ -195,9 +195,29 @@ export async function updateTransaction(id: string, input: CreateTransactionInpu
   });
 }
 
-export async function listTransactions(accountId?: string) {
+export async function listTransactions(params?: {
+  accountId?: string;
+  from?: Date;
+  to?: Date;
+}) {
+  const from = params?.from;
+  const to = params?.to;
+  if (from && to && from > to) {
+    throw new DomainValidationError("from must be <= to");
+  }
+
   const rows = await prisma.transaction.findMany({
-    where: accountId ? { accountId } : undefined,
+    where: {
+      ...(params?.accountId ? { accountId: params.accountId } : {}),
+      ...(from || to
+        ? {
+            tradeDate: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {}),
+            },
+          }
+        : {}),
+    },
   });
 
   return sortTransactionsForReplay(rows);

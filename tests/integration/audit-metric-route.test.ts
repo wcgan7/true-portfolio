@@ -123,4 +123,77 @@ describe("/api/audit/metric route", () => {
     expect(payload.data.contributors.transactions).toHaveLength(1);
     expect(payload.data.contributors.transactions[0].accountId).toBe(accountA.id);
   });
+
+  it("scopes market value audit by holding symbol + dimension", async () => {
+    const account = await prisma.account.create({
+      data: { name: "Scoped Account", baseCurrency: "USD" },
+    });
+    const [aapl, msft] = await Promise.all([
+      prisma.instrument.create({
+        data: { symbol: "AAPL_SCOPE", name: "AAPL Scope", kind: "STOCK", currency: "USD" },
+      }),
+      prisma.instrument.create({
+        data: { symbol: "MSFT_SCOPE", name: "MSFT Scope", kind: "STOCK", currency: "USD" },
+      }),
+    ]);
+
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          type: "DEPOSIT",
+          tradeDate: new Date("2026-01-10"),
+          amount: 300,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: aapl.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 100,
+          amount: 100,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: msft.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 200,
+          amount: 200,
+          feeAmount: 0,
+        },
+      ],
+    });
+    await prisma.pricePoint.createMany({
+      data: [
+        { instrumentId: aapl.id, date: new Date("2026-01-10"), close: 110, source: "manual" },
+        { instrumentId: msft.id, date: new Date("2026-01-10"), close: 210, source: "manual" },
+      ],
+    });
+
+    const res = await GET(
+      new Request(
+        "http://localhost/api/audit/metric?metric=marketValue&asOfDate=2026-01-10&scopeDimension=holding&scopeSymbol=AAPL_SCOPE",
+      ),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: {
+        scope: { dimension: string; symbol: string } | null;
+        contributors: {
+          holdings: Array<{ symbol: string }>;
+          transactions: Array<{ instrumentId: string | null }>;
+        };
+      };
+    };
+    expect(payload.data.scope).toEqual({ dimension: "holding", symbol: "AAPL_SCOPE" });
+    expect(payload.data.contributors.holdings).toHaveLength(1);
+    expect(payload.data.contributors.holdings[0].symbol).toBe("AAPL_SCOPE");
+    expect(payload.data.contributors.transactions.some((tx) => tx.instrumentId === aapl.id)).toBe(true);
+    expect(payload.data.contributors.transactions.some((tx) => tx.instrumentId === msft.id)).toBe(false);
+  });
 });

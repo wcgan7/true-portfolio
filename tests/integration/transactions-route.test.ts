@@ -161,6 +161,64 @@ describe("/api/transactions route", () => {
     expect(payload.data[0].accountId).toBe(first.account.id);
   });
 
+  it("applies date range filter in GET /api/transactions", async () => {
+    const { account, instrument } = await seedAccountAndInstrument();
+    await prisma.transaction.createMany({
+      data: [
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-09"),
+          quantity: 1,
+          price: 10,
+          amount: 10,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-10"),
+          quantity: 1,
+          price: 11,
+          amount: 11,
+          feeAmount: 0,
+        },
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          type: "BUY",
+          tradeDate: new Date("2026-01-11"),
+          quantity: 1,
+          price: 12,
+          amount: 12,
+          feeAmount: 0,
+        },
+      ],
+    });
+
+    const res = await GET(
+      new Request(
+        `http://localhost/api/transactions?accountId=${account.id}&from=2026-01-10&to=2026-01-10`,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as { data: Array<{ tradeDate: string }> };
+    expect(payload.data).toHaveLength(1);
+    expect(new Date(payload.data[0].tradeDate).toISOString().slice(0, 10)).toBe("2026-01-10");
+  });
+
+  it("returns 400 for invalid transaction list date filters", async () => {
+    const invalidDate = await GET(new Request("http://localhost/api/transactions?from=bad-date"));
+    expect(invalidDate.status).toBe(400);
+
+    const invalidRange = await GET(
+      new Request("http://localhost/api/transactions?from=2026-01-11&to=2026-01-10"),
+    );
+    expect(invalidRange.status).toBe(400);
+  });
+
   it("returns 400 for non-existent account id", async () => {
     const { instrument } = await seedAccountAndInstrument();
     const req = new Request("http://localhost/api/transactions", {

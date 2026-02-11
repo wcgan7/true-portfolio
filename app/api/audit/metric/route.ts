@@ -1,39 +1,37 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 
+import { getDefaultPortfolioEngines } from "@/src/lib/engines/default-engines";
 import { DomainValidationError } from "@/src/lib/errors";
+import { auditMetricQuerySchema } from "@/src/lib/schemas/audit-query";
 import { getMetricAudit } from "@/src/lib/services/audit-service";
-import type { OverviewMode } from "@/src/lib/services/overview-service";
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const metric = url.searchParams.get("metric") ?? "";
-    const accountId = url.searchParams.get("accountId") ?? undefined;
-    const asOfDateParam = url.searchParams.get("asOfDate");
-    const asOfDate = asOfDateParam ? new Date(asOfDateParam) : undefined;
-    const modeParam = (url.searchParams.get("mode") ?? "raw") as OverviewMode;
-
-    if (!metric) {
-      throw new DomainValidationError("metric is required");
-    }
-    if (asOfDateParam && Number.isNaN(asOfDate?.getTime())) {
-      throw new DomainValidationError("Invalid asOfDate. Expected ISO date.");
-    }
-    if (![
-      "raw",
-      "lookthrough",
-    ].includes(modeParam)) {
-      throw new DomainValidationError("Invalid mode. Use raw or lookthrough.");
-    }
+    const query = auditMetricQuerySchema.parse({
+      metric: url.searchParams.get("metric") ?? undefined,
+      accountId: url.searchParams.get("accountId") ?? undefined,
+      asOfDate: url.searchParams.get("asOfDate") ?? undefined,
+      mode: url.searchParams.get("mode") ?? undefined,
+      scopeDimension: url.searchParams.get("scopeDimension") ?? undefined,
+      scopeSymbol: url.searchParams.get("scopeSymbol") ?? undefined,
+    });
 
     const data = await getMetricAudit({
-      metric,
-      accountId,
-      asOfDate,
-      mode: modeParam,
+      metric: query.metric,
+      accountId: query.accountId,
+      asOfDate: query.asOfDate,
+      mode: query.mode,
+      scopeDimension: query.scopeDimension,
+      scopeSymbol: query.scopeSymbol,
+      engines: getDefaultPortfolioEngines(),
     });
     return NextResponse.json({ data });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid query params." }, { status: 400 });
+    }
     if (error instanceof DomainValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

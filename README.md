@@ -70,6 +70,23 @@ curl -X POST http://localhost:3000/api/valuations/refresh \
   -d '{"from":"2026-01-01","to":"2026-01-31"}'
 ```
 
+### Curated ETF Constituent Ingestion
+
+Ingest curated ETF look-through rows (manual dataset path):
+```bash
+curl -X POST http://localhost:3000/api/etf-constituents/ingest \
+  -H "content-type: application/json" \
+  -d '{
+    "asOfDate":"2026-01-31",
+    "source":"curated_manual",
+    "replaceExistingAsOfDate":true,
+    "rows":[
+      {"etfSymbol":"SPY","constituentSymbol":"AAPL","weight":0.08},
+      {"etfSymbol":"SPY","constituentSymbol":"MSFT","weight":0.07}
+    ]
+  }'
+```
+
 ### Testing
 
 Run unit + integration tests with coverage:

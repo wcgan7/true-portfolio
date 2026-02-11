@@ -23,6 +23,8 @@ type Transaction = {
   price: string | null;
   amount: string;
   feeAmount: string;
+  notes: string | null;
+  externalRef: string | null;
 };
 
 type TxType = Transaction["type"];
@@ -36,6 +38,16 @@ function isTradeType(type: TxType): boolean {
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
+
+type EditDraft = {
+  tradeDate: string;
+  quantity: string;
+  price: string;
+  amount: string;
+  feeAmount: string;
+  notes: string;
+  externalRef: string;
+};
 
 export default function TransactionsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -53,6 +65,10 @@ export default function TransactionsPage() {
   const [externalRef, setExternalRef] = useState("");
   const [notes, setNotes] = useState("");
   const [filterAccountId, setFilterAccountId] = useState("");
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterTo, setFilterTo] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   const [symbol, setSymbol] = useState("");
   const [instrumentName, setInstrumentName] = useState("");
@@ -61,6 +77,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [submittingTx, setSubmittingTx] = useState(false);
   const [submittingInstrument, setSubmittingInstrument] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function loadAccountsAndInstruments() {
@@ -86,10 +103,20 @@ export default function TransactionsPage() {
     }
   }
 
-  async function loadTransactions(nextAccountFilter?: string) {
-    const accountFilter = nextAccountFilter ?? filterAccountId;
-    const query = accountFilter ? `?accountId=${encodeURIComponent(accountFilter)}` : "";
-    const res = await fetch(`/api/transactions${query}`);
+  async function loadTransactions(next?: {
+    accountId?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const accountFilter = next?.accountId ?? filterAccountId;
+    const fromFilter = next?.from ?? filterFrom;
+    const toFilter = next?.to ?? filterTo;
+    const params = new URLSearchParams();
+    if (accountFilter) params.set("accountId", accountFilter);
+    if (fromFilter) params.set("from", fromFilter);
+    if (toFilter) params.set("to", toFilter);
+    const query = params.toString();
+    const res = await fetch(`/api/transactions${query ? `?${query}` : ""}`);
     const payload = (await res.json()) as { data?: Transaction[]; error?: string };
     if (!res.ok || !payload.data) {
       throw new Error(payload.error ?? "Failed to load transactions");
@@ -120,6 +147,10 @@ export default function TransactionsPage() {
     [instruments],
   );
 
+  function hasInvalidDateRange(fromValue?: string, toValue?: string): boolean {
+    return Boolean(fromValue && toValue && fromValue > toValue);
+  }
+
   function validateTransactionForm(): string | null {
     if (!accountId) {
       return "Account is required.";
@@ -141,6 +172,10 @@ export default function TransactionsPage() {
   async function onCreateTransaction(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (hasInvalidDateRange(filterFrom, filterTo)) {
+      setError("Filter from date must be <= to date.");
+      return;
+    }
     const validation = validateTransactionForm();
     if (validation) {
       setError(validation);
@@ -174,6 +209,8 @@ export default function TransactionsPage() {
         throw new Error(payload.error ?? "Failed to create transaction");
       }
       await loadTransactions();
+      setEditingId(null);
+      setEditDraft(null);
       setQuantity("");
       setPrice("");
       setAmount("");
@@ -227,10 +264,122 @@ export default function TransactionsPage() {
   async function onFilterChange(next: string) {
     setFilterAccountId(next);
     setError(null);
+    if (hasInvalidDateRange(filterFrom, filterTo)) {
+      setError("Filter from date must be <= to date.");
+      return;
+    }
     try {
-      await loadTransactions(next);
+      await loadTransactions({ accountId: next });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
+    }
+  }
+
+  async function onApplyFilters() {
+    setError(null);
+    if (hasInvalidDateRange(filterFrom, filterTo)) {
+      setError("Filter from date must be <= to date.");
+      return;
+    }
+    try {
+      await loadTransactions({
+        accountId: filterAccountId || undefined,
+        from: filterFrom || undefined,
+        to: filterTo || undefined,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load transactions");
+    }
+  }
+
+  function startEdit(tx: Transaction) {
+    setEditingId(tx.id);
+    setEditDraft({
+      tradeDate: new Date(tx.tradeDate).toISOString().slice(0, 10),
+      quantity: tx.quantity ?? "",
+      price: tx.price ?? "",
+      amount: tx.amount,
+      feeAmount: tx.feeAmount,
+      notes: tx.notes ?? "",
+      externalRef: tx.externalRef ?? "",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+  }
+
+  function validateEditDraft(tx: Transaction, draft: EditDraft): string | null {
+    if (!draft.tradeDate) {
+      return "Trade date is required.";
+    }
+    if (Number(draft.feeAmount || 0) < 0) {
+      return "Fee cannot be negative.";
+    }
+    if (isTradeType(tx.type)) {
+      if (!tx.instrumentId) {
+        return "Trade transaction is missing instrument.";
+      }
+      if (!draft.quantity || Number(draft.quantity) <= 0) {
+        return "Quantity must be > 0.";
+      }
+      if (!draft.price || Number(draft.price) <= 0) {
+        return "Price must be > 0.";
+      }
+      return null;
+    }
+    if (!draft.amount || Number(draft.amount) <= 0) {
+      return "Amount must be > 0.";
+    }
+    return null;
+  }
+
+  async function saveEdit(tx: Transaction) {
+    if (!editDraft) {
+      return;
+    }
+    setError(null);
+    const validation = validateEditDraft(tx, editDraft);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const body: Record<string, unknown> = {
+        accountId: tx.accountId,
+        type: tx.type,
+        tradeDate: editDraft.tradeDate,
+        feeAmount: Number(editDraft.feeAmount || 0),
+        notes: editDraft.notes.trim() || undefined,
+        externalRef: editDraft.externalRef.trim() || undefined,
+      };
+      if (isTradeType(tx.type)) {
+        body.instrumentId = tx.instrumentId;
+        body.quantity = Number(editDraft.quantity);
+        body.price = Number(editDraft.price);
+      } else {
+        body.amount = Number(editDraft.amount);
+      }
+
+      const res = await fetch(`/api/transactions/${tx.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Failed to update transaction");
+      }
+
+      setEditingId(null);
+      setEditDraft(null);
+      await loadTransactions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update transaction");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -416,20 +565,49 @@ export default function TransactionsPage() {
 
       <section>
         <h2>Transaction Table</h2>
-        <label htmlFor="filter-account">Filter by Account</label>
-        <select
-          id="filter-account"
-          value={filterAccountId}
-          onChange={(event) => void onFilterChange(event.target.value)}
-          data-testid="tx-filter-account-select"
-        >
-          <option value="">All accounts</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+          <div>
+            <label htmlFor="filter-account">Filter by Account</label>
+            <select
+              id="filter-account"
+              value={filterAccountId}
+              onChange={(event) => void onFilterChange(event.target.value)}
+              data-testid="tx-filter-account-select"
+            >
+              <option value="">All accounts</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filter-from">From</label>
+            <input
+              id="filter-from"
+              type="date"
+              value={filterFrom}
+              onChange={(event) => setFilterFrom(event.target.value)}
+              data-testid="tx-filter-from-input"
+            />
+          </div>
+          <div>
+            <label htmlFor="filter-to">To</label>
+            <input
+              id="filter-to"
+              type="date"
+              value={filterTo}
+              onChange={(event) => setFilterTo(event.target.value)}
+              data-testid="tx-filter-to-input"
+            />
+          </div>
+          <div style={{ alignSelf: "end" }}>
+            <button type="button" onClick={() => void onApplyFilters()} data-testid="tx-apply-filters-btn">
+              Apply Filters
+            </button>
+          </div>
+        </div>
 
         {transactions.length === 0 ? (
           <p>No transactions yet.</p>
@@ -444,20 +622,154 @@ export default function TransactionsPage() {
                 <th>Qty</th>
                 <th>Price</th>
                 <th>Amount</th>
+                <th>Fee</th>
+                <th>Notes</th>
+                <th>External Ref</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {transactions.map((tx) => (
-                <tr key={tx.id}>
-                  <td>{new Date(tx.tradeDate).toISOString().slice(0, 10)}</td>
-                  <td>{tx.type}</td>
-                  <td>{accounts.find((a) => a.id === tx.accountId)?.name ?? tx.accountId}</td>
-                  <td>{instruments.find((i) => i.id === tx.instrumentId)?.symbol ?? "-"}</td>
-                  <td>{tx.quantity ?? "-"}</td>
-                  <td>{tx.price ?? "-"}</td>
-                  <td>{tx.amount}</td>
-                </tr>
-              ))}
+              {transactions.map((tx) => {
+                const isEditing = editingId === tx.id && editDraft != null;
+                const isTrade = isTradeType(tx.type);
+                const computedTradeAmount = isTrade
+                  ? (
+                      (Number(editDraft?.quantity || tx.quantity || 0) || 0) *
+                      (Number(editDraft?.price || tx.price || 0) || 0)
+                    ).toFixed(6)
+                  : null;
+
+                return (
+                  <tr key={tx.id}>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          value={editDraft.tradeDate}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, tradeDate: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-trade-date-input"
+                        />
+                      ) : (
+                        new Date(tx.tradeDate).toISOString().slice(0, 10)
+                      )}
+                    </td>
+                    <td>{tx.type}</td>
+                    <td>{accounts.find((a) => a.id === tx.accountId)?.name ?? tx.accountId}</td>
+                    <td>{instruments.find((i) => i.id === tx.instrumentId)?.symbol ?? "-"}</td>
+                    <td>
+                      {isEditing && isTrade ? (
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={editDraft.quantity}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, quantity: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-quantity-input"
+                        />
+                      ) : (
+                        tx.quantity ?? "-"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing && isTrade ? (
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={editDraft.price}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, price: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-price-input"
+                        />
+                      ) : (
+                        tx.price ?? "-"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing && !isTrade ? (
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={editDraft.amount}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, amount: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-amount-input"
+                        />
+                      ) : isEditing && isTrade ? (
+                        computedTradeAmount
+                      ) : (
+                        tx.amount
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={editDraft.feeAmount}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, feeAmount: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-fee-input"
+                        />
+                      ) : (
+                        tx.feeAmount
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          value={editDraft.notes}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-notes-input"
+                        />
+                      ) : (
+                        tx.notes ?? "-"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          value={editDraft.externalRef}
+                          onChange={(event) =>
+                            setEditDraft((prev) => (prev ? { ...prev, externalRef: event.target.value } : prev))
+                          }
+                          data-testid="edit-tx-external-ref-input"
+                        />
+                      ) : (
+                        tx.externalRef ?? "-"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => void saveEdit(tx)}
+                            disabled={savingEdit}
+                            data-testid="save-tx-edit-btn"
+                          >
+                            {savingEdit ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" onClick={cancelEdit} data-testid="cancel-tx-edit-btn">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => startEdit(tx)} data-testid="edit-tx-btn">
+                          Edit
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -465,4 +777,3 @@ export default function TransactionsPage() {
     </main>
   );
 }
-

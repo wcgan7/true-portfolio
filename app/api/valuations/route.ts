@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { DomainValidationError } from "@/src/lib/errors";
 import { recomputeValuationsSchema } from "@/src/lib/schemas/valuation";
+import { valuationsQuerySchema } from "@/src/lib/schemas/valuations-query";
 import {
   listDailyValuations,
   recomputeDailyValuations,
@@ -11,22 +12,22 @@ import {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const accountId = url.searchParams.get("accountId") ?? undefined;
-    const fromParam = url.searchParams.get("from");
-    const toParam = url.searchParams.get("to");
-    const from = fromParam ? new Date(fromParam) : undefined;
-    const to = toParam ? new Date(toParam) : undefined;
+    const query = valuationsQuerySchema.parse({
+      accountId: url.searchParams.get("accountId") ?? undefined,
+      from: url.searchParams.get("from") ?? undefined,
+      to: url.searchParams.get("to") ?? undefined,
+    });
 
-    if (fromParam && Number.isNaN(from?.getTime())) {
-      throw new DomainValidationError("Invalid from. Expected ISO date.");
-    }
-    if (toParam && Number.isNaN(to?.getTime())) {
-      throw new DomainValidationError("Invalid to. Expected ISO date.");
-    }
-
-    const data = await listDailyValuations({ accountId, from, to });
+    const data = await listDailyValuations({
+      accountId: query.accountId,
+      from: query.from,
+      to: query.to,
+    });
     return NextResponse.json({ data }, { status: 200 });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid query params." }, { status: 400 });
+    }
     if (error instanceof DomainValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

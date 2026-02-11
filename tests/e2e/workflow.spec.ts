@@ -35,11 +35,25 @@ test("transactions page creates instrument, validates trade fields, and creates 
   await page.getByTestId("create-instrument-btn").click();
 
   await expect
+    .poll(async () => page.locator("[data-testid='tx-instrument-select'] option").allTextContents(), {
+      timeout: 15000,
+    })
+    .toContain(`${symbol} (STOCK)`);
+  await expect
     .poll(async () => page.locator("[data-testid='tx-account-select'] option").allTextContents(), {
       timeout: 15000,
     })
     .toContain(accountName);
+  await expect
+    .poll(async () => page.locator("[data-testid='tx-filter-account-select'] option").allTextContents(), {
+      timeout: 15000,
+    })
+    .toContain(accountName);
   await page.getByTestId("tx-account-select").selectOption({ label: accountName });
+  await page.getByTestId("tx-filter-account-select").selectOption({ label: accountName });
+  await page.getByTestId("tx-filter-from-input").fill("2026-01-10");
+  await page.getByTestId("tx-filter-to-input").fill("2026-01-10");
+  await page.getByTestId("tx-apply-filters-btn").click();
   await page.getByTestId("tx-type-select").selectOption("BUY");
   await page.getByTestId("tx-quantity-input").fill("2");
   await page.getByTestId("tx-price-input").fill("101");
@@ -47,12 +61,27 @@ test("transactions page creates instrument, validates trade fields, and creates 
   await expect(page.getByText("Instrument is required for BUY/SELL.")).toBeVisible();
 
   await page.getByTestId("tx-instrument-select").selectOption({ label: `${symbol} (STOCK)` });
+  await page.getByTestId("tx-account-select").selectOption({ label: accountName });
   await page.getByTestId("tx-trade-date-input").fill("2026-01-10");
   await page.getByTestId("create-tx-btn").click();
 
-  await expect(page.getByTestId("transactions-table")).toContainText(accountName);
+  await expect
+    .poll(async () => (await page.getByTestId("transactions-table").textContent()) ?? "", {
+      timeout: 15000,
+    })
+    .toContain(accountName);
   await expect(page.getByTestId("transactions-table")).toContainText(symbol);
   await expect(page.getByTestId("transactions-table")).toContainText("BUY");
+
+  await page.getByTestId("edit-tx-btn").first().click();
+  await page.getByTestId("edit-tx-quantity-input").fill("3");
+  await page.getByTestId("edit-tx-price-input").fill("102");
+  const editedNote = `edited-${suffix()}`;
+  await page.getByTestId("edit-tx-notes-input").fill(editedNote);
+  await page.getByTestId("save-tx-edit-btn").click();
+
+  await expect(page.getByTestId("transactions-table")).toContainText(editedNote);
+  await expect(page.getByTestId("transactions-table")).toContainText("3");
 });
 
 test("valuations page recomputes and lists persisted daily valuations", async ({ page, request }) => {

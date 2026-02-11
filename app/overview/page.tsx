@@ -1,9 +1,11 @@
 import { getOverviewSnapshot } from "@/src/lib/services/overview-service";
-import type { AuditMetric } from "@/src/lib/services/audit-service";
+import type { AuditMetric, AuditScopeDimension } from "@/src/lib/services/audit-service";
 import type { OverviewHolding } from "@/src/lib/services/valuation-core";
 import { ExposureCharts } from "@/app/overview/exposure-charts";
 import { listAccounts } from "@/src/lib/services/account-service";
 import { MetricAuditDrawer } from "@/app/overview/metric-audit-drawer";
+import type { PerformancePeriod } from "@/src/lib/services/performance-service";
+import { getDefaultPortfolioEngines } from "@/src/lib/engines/default-engines";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -11,6 +13,7 @@ type OverviewPageProps = {
 
 export default async function OverviewPage({ searchParams }: OverviewPageProps) {
   const resolved = (await searchParams) ?? {};
+  const firstParam = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
   const toList = (value: string | string[] | undefined): string[] => {
     if (!value) return [];
     const arr = Array.isArray(value) ? value : [value];
@@ -19,19 +22,32 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
       .map((item) => item.trim())
       .filter(Boolean);
   };
-  const modeParam = resolved.mode;
-  const modeValue = Array.isArray(modeParam) ? modeParam[0] : modeParam;
+  const modeValue = firstParam(resolved.mode);
   const mode = modeValue === "lookthrough" ? "lookthrough" : "raw";
-  const accountIdParam = resolved.accountId;
-  const accountId = Array.isArray(accountIdParam) ? accountIdParam[0] : accountIdParam;
+  const accountId = firstParam(resolved.accountId);
   const assetKinds = toList(resolved.assetKind).map((value) => value.toUpperCase()) as Array<
     OverviewHolding["kind"]
   >;
   const currencies = toList(resolved.currency).map((value) => value.toUpperCase());
-  const metricParam = resolved.metric;
-  const metricValue = Array.isArray(metricParam) ? metricParam[0] : metricParam;
-  const topNParam = resolved.topN;
-  const topNRaw = Array.isArray(topNParam) ? topNParam[0] : topNParam;
+  const metricValue = firstParam(resolved.metric);
+  const scopeDimensionValue = firstParam(resolved.scopeDimension);
+  const scopeSymbolValue = firstParam(resolved.scopeSymbol);
+  const topNRaw = firstParam(resolved.topN);
+  const periodValue = firstParam(resolved.period);
+  const period: PerformancePeriod =
+    periodValue === "custom" || periodValue === "ytd" ? periodValue : "since_inception";
+  const fromRaw = firstParam(resolved.from);
+  const toRaw = firstParam(resolved.to);
+  const parseDate = (value?: string) => {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return parsed;
+  };
+  const from = parseDate(fromRaw);
+  const to = parseDate(toRaw);
+  const customFromDefault = from ? from.toISOString().slice(0, 10) : undefined;
+  const customToDefault = to ? to.toISOString().slice(0, 10) : undefined;
   const parsedTopN = topNRaw ? Number(topNRaw) : 10;
   const topN = Number.isFinite(parsedTopN) ? Math.max(3, Math.min(25, Math.floor(parsedTopN))) : 10;
   const metric = ([
@@ -45,9 +61,26 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   ] as const).includes(metricValue as AuditMetric)
     ? (metricValue as AuditMetric)
     : null;
+  const scopeDimension = (["holding", "country", "sector", "industry", "currency"] as const).includes(
+    scopeDimensionValue as AuditScopeDimension,
+  )
+    ? (scopeDimensionValue as AuditScopeDimension)
+    : undefined;
+  const scopeSymbol = scopeSymbolValue?.trim() || undefined;
 
-  const snapshot = await getOverviewSnapshot({ mode, assetKinds, currencies, accountId });
+  const snapshot = await getOverviewSnapshot({
+    mode,
+    assetKinds,
+    currencies,
+    accountId,
+    period,
+    from,
+    to,
+    engines: getDefaultPortfolioEngines(),
+  });
   const accounts = await listAccounts();
+  const effectiveCustomFrom = customFromDefault ?? snapshot.performance.period.startDate;
+  const effectiveCustomTo = customToDefault ?? snapshot.performance.period.endDate;
   const aggregatedHoldings = [...snapshot.holdings]
     .reduce(
       (map, holding) => {
@@ -78,7 +111,12 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
       accountId: accountId ?? null,
       assetKind: assetKinds.join(",") || null,
       currency: currencies.join(",") || null,
+      period,
+      from: period === "custom" ? (from ? from.toISOString().slice(0, 10) : null) : null,
+      to: period === "custom" ? (to ? to.toISOString().slice(0, 10) : null) : null,
       topN: String(topN),
+      scopeDimension: scopeDimension ?? null,
+      scopeSymbol: scopeSymbol ?? null,
       ...overrides,
     };
     for (const [key, value] of Object.entries(base)) {
@@ -125,18 +163,141 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         <a href={buildOverviewHref({ topN: "10" })}>10</a> |{" "}
         <a href={buildOverviewHref({ topN: "20" })}>20</a>
       </p>
+      <p data-testid="overview-performance-period">
+        Performance Period: {snapshot.performance.period.type} ({snapshot.performance.period.startDate} to{" "}
+        {snapshot.performance.period.endDate})
+      </p>
+      <p>
+        Period:{" "}
+        <a href={buildOverviewHref({ period: "since_inception", from: null, to: null })}>Since Inception</a> |{" "}
+        <a href={buildOverviewHref({ period: "ytd", from: null, to: null })}>YTD</a> |{" "}
+        <a
+          href={buildOverviewHref({
+            period: "custom",
+            from: effectiveCustomFrom,
+            to: effectiveCustomTo,
+          })}
+        >
+          Custom
+        </a>
+      </p>
+      <form method="get" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+        <input type="hidden" name="mode" value={mode} />
+        {metric ? <input type="hidden" name="metric" value={metric} /> : null}
+        {accountId ? <input type="hidden" name="accountId" value={accountId} /> : null}
+        {assetKinds.length ? <input type="hidden" name="assetKind" value={assetKinds.join(",")} /> : null}
+        {currencies.length ? <input type="hidden" name="currency" value={currencies.join(",")} /> : null}
+        {scopeDimension ? <input type="hidden" name="scopeDimension" value={scopeDimension} /> : null}
+        {scopeSymbol ? <input type="hidden" name="scopeSymbol" value={scopeSymbol} /> : null}
+        <input type="hidden" name="topN" value={String(topN)} />
+        <input type="hidden" name="period" value="custom" />
+        <p style={{ margin: 0 }}>
+          <label htmlFor="overview-custom-from">From</label>
+          <br />
+          <input
+            id="overview-custom-from"
+            name="from"
+            type="date"
+            defaultValue={effectiveCustomFrom}
+            data-testid="overview-custom-from-input"
+          />
+        </p>
+        <p style={{ margin: 0 }}>
+          <label htmlFor="overview-custom-to">To</label>
+          <br />
+          <input
+            id="overview-custom-to"
+            name="to"
+            type="date"
+            defaultValue={effectiveCustomTo}
+            data-testid="overview-custom-to-input"
+          />
+        </p>
+        <button type="submit" data-testid="overview-apply-custom-period-btn">
+          Apply Custom Period
+        </button>
+      </form>
 
       <section>
         <h2>Totals</h2>
-        <ul>
-          <li>Total Value: {snapshot.totals.totalValue.toFixed(2)}</li>
-          <li>Cash Value: {snapshot.totals.cashValue.toFixed(2)}</li>
-          <li>Market Value: {snapshot.totals.marketValue.toFixed(2)}</li>
-          <li>Realized P&amp;L: {snapshot.totals.realizedPnl.toFixed(2)}</li>
-          <li>Unrealized P&amp;L: {snapshot.totals.unrealizedPnl.toFixed(2)}</li>
-          <li>MWR: {snapshot.totals.mwr == null ? "N/A" : `${(snapshot.totals.mwr * 100).toFixed(2)}%`}</li>
-          <li>TWR: {snapshot.totals.twr == null ? "N/A" : `${(snapshot.totals.twr * 100).toFixed(2)}%`}</li>
-        </ul>
+        <div
+          data-testid="kpi-cards-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "totalValue", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-total-value-link"
+            >
+              Total Value
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.totalValue.toFixed(2)}</p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "cashValue", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-cash-value-link"
+            >
+              Cash Value
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.cashValue.toFixed(2)}</p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "marketValue", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-market-value-link"
+            >
+              Market Value
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.marketValue.toFixed(2)}</p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "realizedPnl", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-realized-pnl-link"
+            >
+              Realized P&amp;L
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.realizedPnl.toFixed(2)}</p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "unrealizedPnl", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-unrealized-pnl-link"
+            >
+              Unrealized P&amp;L
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
+              {snapshot.totals.unrealizedPnl.toFixed(2)}
+            </p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "mwr", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-mwr-link"
+            >
+              MWR
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
+              {snapshot.totals.mwr == null ? "N/A" : `${(snapshot.totals.mwr * 100).toFixed(2)}%`}
+            </p>
+          </article>
+          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
+            <a
+              href={buildOverviewHref({ metric: "twr", scopeDimension: null, scopeSymbol: null })}
+              data-testid="kpi-twr-link"
+            >
+              TWR
+            </a>
+            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
+              {snapshot.totals.twr == null ? "N/A" : `${(snapshot.totals.twr * 100).toFixed(2)}%`}
+            </p>
+          </article>
+        </div>
       </section>
 
       <section>
@@ -163,6 +324,8 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         mode={snapshot.mode}
         accountId={accountId}
         initialMetric={metric}
+        initialScopeDimension={scopeDimension}
+        initialScopeSymbol={scopeSymbol}
       />
 
       {snapshot.lookThrough ? (
@@ -205,7 +368,9 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
             </thead>
             <tbody>
               {snapshot.holdings.map((holding) => (
-                <tr key={`${holding.accountId}-${holding.instrumentId ?? "cash"}`}>
+                <tr
+                  key={`${holding.accountId}:${holding.instrumentId ?? "none"}:${holding.symbol}:${holding.kind}`}
+                >
                   <td>{holding.symbol}</td>
                   <td>{holding.kind}</td>
                   <td>{holding.marketValue.toFixed(2)}</td>
@@ -224,6 +389,11 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         sectors={snapshot.classifications.bySector.slice(0, topN)}
         industries={snapshot.classifications.byIndustry.slice(0, topN)}
         currencies={snapshot.classifications.byCurrency.slice(0, topN)}
+        marketValueAuditHref={buildOverviewHref({
+          metric: "marketValue",
+          scopeDimension: null,
+          scopeSymbol: null,
+        })}
       />
 
       <section>

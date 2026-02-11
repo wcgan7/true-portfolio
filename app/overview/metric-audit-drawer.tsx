@@ -11,11 +11,14 @@ type AuditMetric =
   | "mwr"
   | "twr";
 
+type AuditScopeDimension = "holding" | "country" | "sector" | "industry" | "currency";
+
 type MetricAuditPayload = {
   metric: AuditMetric;
   asOfDate: string;
   accountId: string | null;
   mode: "raw" | "lookthrough";
+  scope: { dimension: AuditScopeDimension; symbol: string } | null;
   value: number | null;
   contributors: {
     holdings: Array<{
@@ -64,6 +67,8 @@ export function MetricAuditDrawer(props: {
   mode: "raw" | "lookthrough";
   accountId?: string;
   initialMetric: AuditMetric | null;
+  initialScopeDimension?: AuditScopeDimension;
+  initialScopeSymbol?: string;
 }) {
   const [isOpen, setIsOpen] = useState(Boolean(props.initialMetric));
   const [selectedMetric, setSelectedMetric] = useState<AuditMetric>(
@@ -84,6 +89,10 @@ export function MetricAuditDrawer(props: {
       });
       if (props.accountId) {
         params.set("accountId", props.accountId);
+      }
+      if (props.initialScopeDimension && props.initialScopeSymbol) {
+        params.set("scopeDimension", props.initialScopeDimension);
+        params.set("scopeSymbol", props.initialScopeSymbol);
       }
       const res = await fetch(`/api/audit/metric?${params.toString()}`);
       const payload = (await res.json()) as { data?: MetricAuditPayload; error?: string };
@@ -113,7 +122,32 @@ export function MetricAuditDrawer(props: {
     }
     void load(selectedMetric);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, selectedMetric, props.accountId, props.asOfDate, props.mode]);
+  }, [
+    isOpen,
+    selectedMetric,
+    props.accountId,
+    props.asOfDate,
+    props.mode,
+    props.initialScopeDimension,
+    props.initialScopeSymbol,
+  ]);
+
+  useEffect(() => {
+    if (!props.initialMetric) {
+      return;
+    }
+    setIsOpen(true);
+    setSelectedMetric(props.initialMetric);
+    void load(props.initialMetric);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.initialMetric,
+    props.accountId,
+    props.asOfDate,
+    props.mode,
+    props.initialScopeDimension,
+    props.initialScopeSymbol,
+  ]);
 
   return (
     <section>
@@ -168,6 +202,9 @@ export function MetricAuditDrawer(props: {
             <div>
               <h3 data-testid="metric-audit-title">Metric Audit: {audit.metric}</h3>
               <p>As of: {audit.asOfDate}</p>
+              <p data-testid="metric-audit-scope">
+                Scope: {audit.scope ? `${audit.scope.dimension}=${audit.scope.symbol}` : "none"}
+              </p>
               <p>Value: {audit.value == null ? "N/A" : audit.value.toFixed(6)}</p>
               <p>Transactions contributing: {audit.contributors.transactions.length}</p>
               <p>Warnings in scope: {audit.contributors.warnings.length}</p>
