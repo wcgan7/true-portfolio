@@ -2,6 +2,24 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Box,
+  Button,
+  LinearProgress,
+  Stack,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from "@mui/material";
+import { DataTable } from "@/src/components/ui/data-table";
+import { EmptyState } from "@/src/components/ui/empty-state";
+import { FormSection } from "@/src/components/ui/form-section";
+import { InlineAlert } from "@/src/components/ui/inline-alert";
+import { PageHeader } from "@/src/components/ui/page-header";
+import { SectionCard } from "@/src/components/ui/section-card";
 
 type Account = {
   id: string;
@@ -229,189 +247,197 @@ export default function ValuationsPage() {
   }
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Valuations</h1>
-      <p>Materialize and review daily valuation rows.</p>
+    <Box component="main">
+      <PageHeader title="Valuations" subtitle="Materialize and review daily valuation rows." />
 
-      <section>
-        <h2>Recompute Daily Valuations</h2>
-        <form onSubmit={onRecompute} style={{ display: "grid", gap: 8, maxWidth: 520 }}>
-          <label htmlFor="val-account">Account</label>
-          <select
-            id="val-account"
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value)}
-            data-testid="valuation-account-select"
-          >
-            <option value="">All accounts + portfolio</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="val-from">From</label>
-          <input
-            id="val-from"
-            type="date"
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
-            data-testid="valuation-from-input"
-          />
-
-          <label htmlFor="val-to">To</label>
-          <input
-            id="val-to"
-            type="date"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-            data-testid="valuation-to-input"
-          />
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={submitting} data-testid="recompute-valuations-btn">
-              {submitting ? "Recomputing..." : "Recompute"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void onRunFullRefresh()}
-              disabled={refreshing}
-              data-testid="run-full-refresh-btn"
-            >
-              {refreshing ? "Refreshing..." : "Refresh Prices + Recompute"}
-            </button>
-            <button type="button" onClick={() => void onApplyFilter()} data-testid="load-valuations-btn">
-              Load Rows
-            </button>
-          </div>
-        </form>
-      </section>
-
-      {error ? (
-        <p role="alert" style={{ color: "#b00020" }}>
-          {error}
-        </p>
-      ) : null}
-
-      {lastResult ? (
-        <section>
-          <h2>Last Recompute</h2>
-          <p data-testid="valuation-last-result">
-            {lastResult.from} to {lastResult.to} | dates={lastResult.datesProcessed} | rows={lastResult.rowsUpserted}
-          </p>
-        </section>
-      ) : null}
-
-      {refreshStatus ? (
-        <section>
-          <h2>Last Pipeline Status</h2>
-          <p data-testid="valuation-refresh-status">
-            Last prices fetched: {refreshStatus.lastPriceFetchedAt ?? "never"} | Last materialized:{" "}
-            {refreshStatus.lastValuationMaterializedAt ?? "never"} | Last valuation date:{" "}
-            {refreshStatus.lastValuationDate ?? "never"}
-          </p>
-        </section>
-      ) : null}
-
-      {lastRefreshRun ? (
-        <section>
-          <h2>Last Full Refresh</h2>
-          <p data-testid="valuation-refresh-run-result">
-            prices={lastRefreshRun.price.pointsUpserted} points, symbols=
-            {lastRefreshRun.price.processedSymbols.length}, rows={lastRefreshRun.valuation.rowsUpserted}
-          </p>
-        </section>
-      ) : null}
-
-      <section>
-        <h2>Recent Refresh Jobs</h2>
-        {refreshJobs.length === 0 ? (
-          <p>No jobs yet.</p>
-        ) : (
-          <table data-testid="refresh-jobs-table">
-            <thead>
-              <tr>
-                <th>Started</th>
-                <th>Trigger</th>
-                <th>Status</th>
-                <th>Finished</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {refreshJobs.map((job) => (
-                <tr key={job.id}>
-                  <td>{new Date(job.startedAt).toISOString()}</td>
-                  <td>{job.trigger}</td>
-                  <td>{job.status}</td>
-                  <td>{job.finishedAt ? new Date(job.finishedAt).toISOString() : "running"}</td>
-                  <td>{job.errorMessage ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section>
-        <h2>Persisted Daily Valuations</h2>
-        {loading ? <p>Loading...</p> : null}
-        {!loading && rows.length === 0 ? <p>No rows found.</p> : null}
-        {!loading && rows.length > 0 ? (
-          <div>
-            <h3>Valuation Series</h3>
-            <div style={{ width: "100%", overflowX: "auto" }}>
-              <LineChart
-                width={Math.max(720, rows.length * 80)}
-                height={280}
-                data={rows.map((row) => ({
-                  date: new Date(row.date).toISOString().slice(0, 10),
-                  totalValue: Number(row.totalValue),
-                }))}
-                margin={{ top: 12, right: 16, bottom: 12, left: 12 }}
+      <Stack spacing={2.5}>
+        <FormSection title="Recompute Daily Valuations">
+          <Box component="form" onSubmit={onRecompute} sx={{ display: "grid", gap: 2, maxWidth: 640 }}>
+            <Box>
+              <label htmlFor="val-account">Account</label>
+              <Box
+                component="select"
+                id="val-account"
+                value={accountId}
+                onChange={(event) => setAccountId(event.target.value)}
+                data-testid="valuation-account-select"
+                sx={{
+                  mt: 0.5,
+                  width: "100%",
+                  borderRadius: 1.25,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  px: 1.25,
+                  py: 1,
+                  bgcolor: "background.paper",
+                }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis tickFormatter={(value: number) => `$${value.toFixed(0)}`} width={90} />
-                <Tooltip
-                  formatter={(value) => {
-                    const totalValue = Number(value ?? 0);
-                    return [`$${totalValue.toFixed(2)}`, "Total Value"];
-                  }}
-                />
-                <Line type="monotone" dataKey="totalValue" stroke="#0f766e" strokeWidth={2} dot={false} />
-              </LineChart>
-            </div>
-          </div>
+                <option value="">All accounts + portfolio</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </Box>
+            </Box>
+
+            <TextField
+              id="val-from"
+              label="From"
+              type="date"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "valuation-from-input" }}
+            />
+
+            <TextField
+              id="val-to"
+              label="To"
+              type="date"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "valuation-to-input" }}
+            />
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+              <Button type="submit" disabled={submitting} data-testid="recompute-valuations-btn" variant="contained">
+                {submitting ? "Recomputing..." : "Recompute"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void onRunFullRefresh()}
+                disabled={refreshing}
+                data-testid="run-full-refresh-btn"
+                variant="outlined"
+              >
+                {refreshing ? "Refreshing..." : "Refresh Prices + Recompute"}
+              </Button>
+              <Button type="button" onClick={() => void onApplyFilter()} data-testid="load-valuations-btn" variant="text">
+                Load Rows
+              </Button>
+            </Stack>
+          </Box>
+        </FormSection>
+
+        {loading ? <LinearProgress /> : null}
+        {error ? <InlineAlert severity="error">{error}</InlineAlert> : null}
+
+        {lastResult ? (
+          <SectionCard title="Last Recompute" compact>
+            <Typography data-testid="valuation-last-result">
+              {lastResult.from} to {lastResult.to} | dates={lastResult.datesProcessed} | rows={lastResult.rowsUpserted}
+            </Typography>
+          </SectionCard>
         ) : null}
-        {!loading && rows.length > 0 ? (
-          <table data-testid="valuations-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Account</th>
-                <th>Cash</th>
-                <th>Market</th>
-                <th>Total</th>
-                <th>Complete</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{new Date(row.date).toISOString().slice(0, 10)}</td>
-                  <td>{row.accountId ?? "PORTFOLIO"}</td>
-                  <td>{Number(row.cashValue).toFixed(2)}</td>
-                  <td>{Number(row.marketValue).toFixed(2)}</td>
-                  <td>{Number(row.totalValue).toFixed(2)}</td>
-                  <td>{row.completenessFlag ? "yes" : "no"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        {refreshStatus ? (
+          <SectionCard title="Last Pipeline Status" compact>
+            <Typography data-testid="valuation-refresh-status">
+              Last prices fetched: {refreshStatus.lastPriceFetchedAt ?? "never"} | Last materialized:{" "}
+              {refreshStatus.lastValuationMaterializedAt ?? "never"} | Last valuation date:{" "}
+              {refreshStatus.lastValuationDate ?? "never"}
+            </Typography>
+          </SectionCard>
         ) : null}
-      </section>
-    </main>
+
+        {lastRefreshRun ? (
+          <SectionCard title="Last Full Refresh" compact>
+            <Typography data-testid="valuation-refresh-run-result">
+              prices={lastRefreshRun.price.pointsUpserted} points, symbols=
+              {lastRefreshRun.price.processedSymbols.length}, rows={lastRefreshRun.valuation.rowsUpserted}
+            </Typography>
+          </SectionCard>
+        ) : null}
+
+        <SectionCard title="Recent Refresh Jobs">
+          {refreshJobs.length === 0 ? (
+            <EmptyState title="No jobs yet." />
+          ) : (
+            <DataTable testId="refresh-jobs-table" compact>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Started</TableCell>
+                  <TableCell>Trigger</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Finished</TableCell>
+                  <TableCell>Error</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {refreshJobs.map((job) => (
+                  <TableRow key={job.id}>
+                    <TableCell>{new Date(job.startedAt).toISOString()}</TableCell>
+                    <TableCell>{job.trigger}</TableCell>
+                    <TableCell>{job.status}</TableCell>
+                    <TableCell>{job.finishedAt ? new Date(job.finishedAt).toISOString() : "running"}</TableCell>
+                    <TableCell>{job.errorMessage ?? "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </DataTable>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Persisted Daily Valuations">
+          {!loading && rows.length === 0 ? <EmptyState title="No rows found." /> : null}
+          {!loading && rows.length > 0 ? (
+            <Box>
+              <Typography variant="h3" component="h3" sx={{ mb: 1.5 }}>
+                Valuation Series
+              </Typography>
+              <Box sx={{ width: "100%", overflowX: "auto", mb: 2 }}>
+                <LineChart
+                  width={Math.max(720, rows.length * 80)}
+                  height={280}
+                  data={rows.map((row) => ({
+                    date: new Date(row.date).toISOString().slice(0, 10),
+                    totalValue: Number(row.totalValue),
+                  }))}
+                  margin={{ top: 12, right: 16, bottom: 12, left: 12 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis tickFormatter={(value: number) => `$${value.toFixed(0)}`} width={90} />
+                  <Tooltip
+                    formatter={(value) => {
+                      const totalValue = Number(value ?? 0);
+                      return [`$${totalValue.toFixed(2)}`, "Total Value"];
+                    }}
+                  />
+                  <Line type="monotone" dataKey="totalValue" stroke="#0B5CAB" strokeWidth={2} dot={false} />
+                </LineChart>
+              </Box>
+
+              <DataTable testId="valuations-table" compact>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Account</TableCell>
+                    <TableCell>Cash</TableCell>
+                    <TableCell>Market</TableCell>
+                    <TableCell>Total</TableCell>
+                    <TableCell>Complete</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{new Date(row.date).toISOString().slice(0, 10)}</TableCell>
+                      <TableCell>{row.accountId ?? "PORTFOLIO"}</TableCell>
+                      <TableCell>{Number(row.cashValue).toFixed(2)}</TableCell>
+                      <TableCell>{Number(row.marketValue).toFixed(2)}</TableCell>
+                      <TableCell>{Number(row.totalValue).toFixed(2)}</TableCell>
+                      <TableCell>{row.completenessFlag ? "yes" : "no"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </DataTable>
+            </Box>
+          ) : null}
+        </SectionCard>
+      </Stack>
+    </Box>
   );
 }

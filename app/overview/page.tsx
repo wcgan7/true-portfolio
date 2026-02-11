@@ -6,6 +6,25 @@ import { listAccounts } from "@/src/lib/services/account-service";
 import { MetricAuditDrawer } from "@/app/overview/metric-audit-drawer";
 import type { PerformancePeriod } from "@/src/lib/services/performance-service";
 import { getDefaultPortfolioEngines } from "@/src/lib/engines/default-engines";
+import {
+  Box,
+  Button,
+  Chip,
+  Link,
+  Stack,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from "@mui/material";
+import { DataTable } from "@/src/components/ui/data-table";
+import { EmptyState } from "@/src/components/ui/empty-state";
+import { KpiCard } from "@/src/components/ui/kpi-card";
+import { PageHeader } from "@/src/components/ui/page-header";
+import { SectionCard } from "@/src/components/ui/section-card";
+import { formatCurrency, formatNumber, formatPercent } from "@/src/components/ui/metric-value";
 
 type OverviewPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -25,9 +44,7 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   const modeValue = firstParam(resolved.mode);
   const mode = modeValue === "lookthrough" ? "lookthrough" : "raw";
   const accountId = firstParam(resolved.accountId);
-  const assetKinds = toList(resolved.assetKind).map((value) => value.toUpperCase()) as Array<
-    OverviewHolding["kind"]
-  >;
+  const assetKinds = toList(resolved.assetKind).map((value) => value.toUpperCase()) as Array<OverviewHolding["kind"]>;
   const currencies = toList(resolved.currency).map((value) => value.toUpperCase());
   const metricValue = firstParam(resolved.metric);
   const scopeDimensionValue = firstParam(resolved.scopeDimension);
@@ -100,9 +117,7 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
       new Map<string, { key: string; marketValue: number; portfolioWeightPct: number }>(),
     )
     .values();
-  const topHoldingRows = [...aggregatedHoldings]
-    .sort((a, b) => b.marketValue - a.marketValue)
-    .slice(0, topN);
+  const topHoldingRows = [...aggregatedHoldings].sort((a, b) => b.marketValue - a.marketValue).slice(0, topN);
   const buildOverviewHref = (overrides: Record<string, string | null | undefined>) => {
     const params = new URLSearchParams();
     const base = {
@@ -128,196 +143,164 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
   };
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Portfolio Overview</h1>
-      <p>As of {snapshot.asOfDate}</p>
-      <p>
-        Mode: <strong>{snapshot.mode}</strong>
-      </p>
-      <p>
-        <a href={buildOverviewHref({ mode: "raw" })}>Raw Holdings</a> |{" "}
-        <a href={buildOverviewHref({ mode: "lookthrough" })}>Look-through</a>
-      </p>
-      <p>
-        Account: <a href={buildOverviewHref({ accountId: null })}>All</a>{" "}
-        {accounts.map((account) => (
-          <span key={account.id}>
-            | <a href={buildOverviewHref({ accountId: account.id })}>{account.name}</a>{" "}
-          </span>
-        ))}
-      </p>
-      <p>
-        Asset Filter:{" "}
-        <a href={buildOverviewHref({ assetKind: null })}>All</a> |{" "}
-        <a href={buildOverviewHref({ assetKind: "STOCK" })}>Stocks</a> |{" "}
-        <a href={buildOverviewHref({ assetKind: "ETF" })}>ETFs</a> |{" "}
-        <a href={buildOverviewHref({ assetKind: "CASH" })}>Cash</a>
-      </p>
-      <p>
-        Currency Filter:{" "}
-        <a href={buildOverviewHref({ currency: null })}>All</a> |{" "}
-        <a href={buildOverviewHref({ currency: "USD" })}>USD</a>
-      </p>
-      <p>
-        Top-N: <a href={buildOverviewHref({ topN: "5" })}>5</a> |{" "}
-        <a href={buildOverviewHref({ topN: "10" })}>10</a> |{" "}
-        <a href={buildOverviewHref({ topN: "20" })}>20</a>
-      </p>
-      <p data-testid="overview-performance-period">
-        Performance Period: {snapshot.performance.period.type} ({snapshot.performance.period.startDate} to{" "}
-        {snapshot.performance.period.endDate})
-      </p>
-      <p>
-        Period:{" "}
-        <a href={buildOverviewHref({ period: "since_inception", from: null, to: null })}>Since Inception</a> |{" "}
-        <a href={buildOverviewHref({ period: "ytd", from: null, to: null })}>YTD</a> |{" "}
-        <a
-          href={buildOverviewHref({
-            period: "custom",
-            from: effectiveCustomFrom,
-            to: effectiveCustomTo,
-          })}
-        >
-          Custom
-        </a>
-      </p>
-      <form method="get" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-        <input type="hidden" name="mode" value={mode} />
-        {metric ? <input type="hidden" name="metric" value={metric} /> : null}
-        {accountId ? <input type="hidden" name="accountId" value={accountId} /> : null}
-        {assetKinds.length ? <input type="hidden" name="assetKind" value={assetKinds.join(",")} /> : null}
-        {currencies.length ? <input type="hidden" name="currency" value={currencies.join(",")} /> : null}
-        {scopeDimension ? <input type="hidden" name="scopeDimension" value={scopeDimension} /> : null}
-        {scopeSymbol ? <input type="hidden" name="scopeSymbol" value={scopeSymbol} /> : null}
-        <input type="hidden" name="topN" value={String(topN)} />
-        <input type="hidden" name="period" value="custom" />
-        <p style={{ margin: 0 }}>
-          <label htmlFor="overview-custom-from">From</label>
-          <br />
-          <input
-            id="overview-custom-from"
-            name="from"
-            type="date"
-            defaultValue={effectiveCustomFrom}
-            data-testid="overview-custom-from-input"
-          />
-        </p>
-        <p style={{ margin: 0 }}>
-          <label htmlFor="overview-custom-to">To</label>
-          <br />
-          <input
-            id="overview-custom-to"
-            name="to"
-            type="date"
-            defaultValue={effectiveCustomTo}
-            data-testid="overview-custom-to-input"
-          />
-        </p>
-        <button type="submit" data-testid="overview-apply-custom-period-btn">
-          Apply Custom Period
-        </button>
-      </form>
+    <Box component="main" sx={{ display: "grid", gap: 2.5 }}>
+      <PageHeader title="Portfolio Overview" subtitle={`As of ${snapshot.asOfDate}`} />
 
-      <section>
-        <h2>Totals</h2>
-        <div
+      <SectionCard compact>
+        <Stack spacing={1}>
+          <Typography>
+            Mode: <strong>{snapshot.mode}</strong>
+          </Typography>
+          <Typography>
+            <Link href={buildOverviewHref({ mode: "raw" })}>Raw Holdings</Link> |{" "}
+            <Link href={buildOverviewHref({ mode: "lookthrough" })}>Look-through</Link>
+          </Typography>
+          <Typography>
+            Account: <Link href={buildOverviewHref({ accountId: null })}>All</Link>{" "}
+            {accounts.map((account) => (
+              <Box key={account.id} component="span" sx={{ ml: 0.5 }}>
+                | <Link href={buildOverviewHref({ accountId: account.id })}>{account.name}</Link>{" "}
+              </Box>
+            ))}
+          </Typography>
+          <Typography>
+            Asset Filter: <Link href={buildOverviewHref({ assetKind: null })}>All</Link> |{" "}
+            <Link href={buildOverviewHref({ assetKind: "STOCK" })}>Stocks</Link> |{" "}
+            <Link href={buildOverviewHref({ assetKind: "ETF" })}>ETFs</Link> |{" "}
+            <Link href={buildOverviewHref({ assetKind: "CASH" })}>Cash</Link>
+          </Typography>
+          <Typography>
+            Currency Filter: <Link href={buildOverviewHref({ currency: null })}>All</Link> |{" "}
+            <Link href={buildOverviewHref({ currency: "USD" })}>USD</Link>
+          </Typography>
+          <Typography>
+            Top-N: <Link href={buildOverviewHref({ topN: "5" })}>5</Link> |{" "}
+            <Link href={buildOverviewHref({ topN: "10" })}>10</Link> |{" "}
+            <Link href={buildOverviewHref({ topN: "20" })}>20</Link>
+          </Typography>
+          <Typography data-testid="overview-performance-period">
+            Performance Period: {snapshot.performance.period.type} ({snapshot.performance.period.startDate} to{" "}
+            {snapshot.performance.period.endDate})
+          </Typography>
+          <Typography>
+            Period:{" "}
+            <Link href={buildOverviewHref({ period: "since_inception", from: null, to: null })}>Since Inception</Link> |{" "}
+            <Link href={buildOverviewHref({ period: "ytd", from: null, to: null })}>YTD</Link> |{" "}
+            <Link
+              href={buildOverviewHref({
+                period: "custom",
+                from: effectiveCustomFrom,
+                to: effectiveCustomTo,
+              })}
+            >
+              Custom
+            </Link>
+          </Typography>
+          <Box component="form" method="get" sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "end" }}>
+            <input type="hidden" name="mode" value={mode} />
+            {metric ? <input type="hidden" name="metric" value={metric} /> : null}
+            {accountId ? <input type="hidden" name="accountId" value={accountId} /> : null}
+            {assetKinds.length ? <input type="hidden" name="assetKind" value={assetKinds.join(",")} /> : null}
+            {currencies.length ? <input type="hidden" name="currency" value={currencies.join(",")} /> : null}
+            {scopeDimension ? <input type="hidden" name="scopeDimension" value={scopeDimension} /> : null}
+            {scopeSymbol ? <input type="hidden" name="scopeSymbol" value={scopeSymbol} /> : null}
+            <input type="hidden" name="topN" value={String(topN)} />
+            <input type="hidden" name="period" value="custom" />
+            <TextField
+              id="overview-custom-from"
+              name="from"
+              label="From"
+              type="date"
+              defaultValue={effectiveCustomFrom}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "overview-custom-from-input" }}
+              size="small"
+            />
+            <TextField
+              id="overview-custom-to"
+              name="to"
+              label="To"
+              type="date"
+              defaultValue={effectiveCustomTo}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "overview-custom-to-input" }}
+              size="small"
+            />
+            <Button type="submit" variant="contained" data-testid="overview-apply-custom-period-btn">
+              Apply Custom Period
+            </Button>
+          </Box>
+        </Stack>
+      </SectionCard>
+
+      <SectionCard title="Totals">
+        <Box
           data-testid="kpi-cards-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 12,
-          }}
+          sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 1.5 }}
         >
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "totalValue", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-total-value-link"
-            >
-              Total Value
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.totalValue.toFixed(2)}</p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "cashValue", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-cash-value-link"
-            >
-              Cash Value
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.cashValue.toFixed(2)}</p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "marketValue", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-market-value-link"
-            >
-              Market Value
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.marketValue.toFixed(2)}</p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "realizedPnl", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-realized-pnl-link"
-            >
-              Realized P&amp;L
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>{snapshot.totals.realizedPnl.toFixed(2)}</p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "unrealizedPnl", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-unrealized-pnl-link"
-            >
-              Unrealized P&amp;L
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
-              {snapshot.totals.unrealizedPnl.toFixed(2)}
-            </p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "mwr", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-mwr-link"
-            >
-              MWR
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
-              {snapshot.totals.mwr == null ? "N/A" : `${(snapshot.totals.mwr * 100).toFixed(2)}%`}
-            </p>
-          </article>
-          <article style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: 12, background: "#ffffff" }}>
-            <a
-              href={buildOverviewHref({ metric: "twr", scopeDimension: null, scopeSymbol: null })}
-              data-testid="kpi-twr-link"
-            >
-              TWR
-            </a>
-            <p style={{ margin: "8px 0 0", fontSize: 20, fontWeight: 700 }}>
-              {snapshot.totals.twr == null ? "N/A" : `${(snapshot.totals.twr * 100).toFixed(2)}%`}
-            </p>
-          </article>
-        </div>
-      </section>
+          <KpiCard
+            label="Total Value"
+            href={buildOverviewHref({ metric: "totalValue", scopeDimension: null, scopeSymbol: null })}
+            value={formatCurrency(snapshot.totals.totalValue)}
+            testId="kpi-total-value-link"
+          />
+          <KpiCard
+            label="Cash Value"
+            href={buildOverviewHref({ metric: "cashValue", scopeDimension: null, scopeSymbol: null })}
+            value={formatCurrency(snapshot.totals.cashValue)}
+            testId="kpi-cash-value-link"
+          />
+          <KpiCard
+            label="Market Value"
+            href={buildOverviewHref({ metric: "marketValue", scopeDimension: null, scopeSymbol: null })}
+            value={formatCurrency(snapshot.totals.marketValue)}
+            testId="kpi-market-value-link"
+          />
+          <KpiCard
+            label="Realized P&L"
+            href={buildOverviewHref({ metric: "realizedPnl", scopeDimension: null, scopeSymbol: null })}
+            value={formatCurrency(snapshot.totals.realizedPnl)}
+            testId="kpi-realized-pnl-link"
+          />
+          <KpiCard
+            label="Unrealized P&L"
+            href={buildOverviewHref({ metric: "unrealizedPnl", scopeDimension: null, scopeSymbol: null })}
+            value={formatCurrency(snapshot.totals.unrealizedPnl)}
+            testId="kpi-unrealized-pnl-link"
+          />
+          <KpiCard
+            label="MWR"
+            href={buildOverviewHref({ metric: "mwr", scopeDimension: null, scopeSymbol: null })}
+            value={formatPercent(snapshot.totals.mwr)}
+            testId="kpi-mwr-link"
+          />
+          <KpiCard
+            label="TWR"
+            href={buildOverviewHref({ metric: "twr", scopeDimension: null, scopeSymbol: null })}
+            value={formatPercent(snapshot.totals.twr)}
+            testId="kpi-twr-link"
+          />
+        </Box>
+      </SectionCard>
 
-      <section>
-        <h2>Data Freshness</h2>
-        <ul>
-          <li>Scoped Valuation Exists: {snapshot.freshness.scopedValuationExists ? "yes" : "no"}</li>
-          <li>
-            Scoped Valuation Complete:{" "}
-            {snapshot.freshness.scopedValuationComplete == null
-              ? "unknown"
-              : snapshot.freshness.scopedValuationComplete
-                ? "yes"
-                : "no"}
-          </li>
-          <li>Scoped Materialized At: {snapshot.freshness.scopedValuationMaterializedAt ?? "never"}</li>
-          <li>Last Materialization: {snapshot.freshness.lastValuationMaterializedAt ?? "never"}</li>
-          <li>Last Valuation Date: {snapshot.freshness.lastValuationDate ?? "never"}</li>
-          <li>Last Price Fetch: {snapshot.freshness.lastPriceFetchedAt ?? "never"}</li>
-        </ul>
-      </section>
+      <SectionCard title="Data Freshness">
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Chip label={`Scoped Valuation Exists: ${snapshot.freshness.scopedValuationExists ? "yes" : "no"}`} />
+          <Chip
+            label={`Scoped Valuation Complete: ${
+              snapshot.freshness.scopedValuationComplete == null
+                ? "unknown"
+                : snapshot.freshness.scopedValuationComplete
+                  ? "yes"
+                  : "no"
+            }`}
+          />
+          <Chip label={`Scoped Materialized At: ${snapshot.freshness.scopedValuationMaterializedAt ?? "never"}`} />
+          <Chip label={`Last Materialization: ${snapshot.freshness.lastValuationMaterializedAt ?? "never"}`} />
+          <Chip label={`Last Valuation Date: ${snapshot.freshness.lastValuationDate ?? "never"}`} />
+          <Chip label={`Last Price Fetch: ${snapshot.freshness.lastPriceFetchedAt ?? "never"}`} />
+        </Stack>
+      </SectionCard>
 
       <MetricAuditDrawer
         asOfDate={snapshot.asOfDate}
@@ -329,58 +312,57 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
       />
 
       {snapshot.lookThrough ? (
-        <section>
-          <h2>Look-through Coverage</h2>
-          <ul>
-            <li>Coverage %: {snapshot.lookThrough.coveragePct.toFixed(2)}</li>
-            <li>Total ETF Value: {snapshot.lookThrough.totalEtfValue.toFixed(2)}</li>
-            <li>Covered ETF Value: {snapshot.lookThrough.coveredEtfValue.toFixed(2)}</li>
-            <li>Uncovered ETF Value: {snapshot.lookThrough.uncoveredEtfValue.toFixed(2)}</li>
-          </ul>
-          <h3>ETF Constituent Staleness</h3>
-          {snapshot.lookThrough.staleness.length === 0 ? (
-            <p>No ETF holdings in current view.</p>
-          ) : (
-            <ul>
-              {snapshot.lookThrough.staleness.map((row) => (
-                <li key={`${row.etfSymbol}-${row.asOfDate ?? "none"}`}>
-                  {row.etfSymbol}: {row.asOfDate ?? "No data"}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <SectionCard title="Look-through Coverage">
+          <Stack spacing={1}>
+            <Typography>Coverage %: {snapshot.lookThrough.coveragePct.toFixed(2)}</Typography>
+            <Typography>Total ETF Value: {formatCurrency(snapshot.lookThrough.totalEtfValue)}</Typography>
+            <Typography>Covered ETF Value: {formatCurrency(snapshot.lookThrough.coveredEtfValue)}</Typography>
+            <Typography>Uncovered ETF Value: {formatCurrency(snapshot.lookThrough.uncoveredEtfValue)}</Typography>
+
+            <Typography component="h3" variant="h3" sx={{ mt: 1 }}>
+              ETF Constituent Staleness
+            </Typography>
+            {snapshot.lookThrough.staleness.length === 0 ? (
+              <EmptyState title="No ETF holdings in current view." />
+            ) : (
+              <Stack component="ul" sx={{ m: 0, pl: 2 }}>
+                {snapshot.lookThrough.staleness.map((row) => (
+                  <li key={`${row.etfSymbol}-${row.asOfDate ?? "none"}`}>
+                    {row.etfSymbol}: {row.asOfDate ?? "No data"}
+                  </li>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        </SectionCard>
       ) : null}
 
-      <section>
-        <h2>Holdings</h2>
+      <SectionCard title="Holdings">
         {snapshot.holdings.length === 0 ? (
-          <p>No holdings yet.</p>
+          <EmptyState title="No holdings yet." />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Kind</th>
-                <th>Value</th>
-                <th>Weight %</th>
-              </tr>
-            </thead>
-            <tbody>
+          <DataTable compact>
+            <TableHead>
+              <TableRow>
+                <TableCell>Symbol</TableCell>
+                <TableCell>Kind</TableCell>
+                <TableCell>Value</TableCell>
+                <TableCell>Weight %</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {snapshot.holdings.map((holding) => (
-                <tr
-                  key={`${holding.accountId}:${holding.instrumentId ?? "none"}:${holding.symbol}:${holding.kind}`}
-                >
-                  <td>{holding.symbol}</td>
-                  <td>{holding.kind}</td>
-                  <td>{holding.marketValue.toFixed(2)}</td>
-                  <td>{holding.portfolioWeightPct.toFixed(2)}</td>
-                </tr>
+                <TableRow key={`${holding.accountId}:${holding.instrumentId ?? "none"}:${holding.symbol}:${holding.kind}`}>
+                  <TableCell>{holding.symbol}</TableCell>
+                  <TableCell>{holding.kind}</TableCell>
+                  <TableCell>{formatNumber(holding.marketValue)}</TableCell>
+                  <TableCell>{holding.portfolioWeightPct.toFixed(2)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </DataTable>
         )}
-      </section>
+      </SectionCard>
 
       <ExposureCharts
         topN={topN}
@@ -396,62 +378,85 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
         })}
       />
 
-      <section>
-        <h2>Warnings</h2>
+      <SectionCard title="Warnings">
         {snapshot.warnings.length === 0 ? (
-          <p>No warnings.</p>
+          <EmptyState title="No warnings." />
         ) : (
-          <ul>
+          <Stack component="ul" sx={{ m: 0, pl: 2 }}>
             {snapshot.warnings.map((warning, idx) => (
               <li key={`${warning.code}-${warning.instrumentId}-${idx}`}>{warning.message}</li>
             ))}
-          </ul>
+          </Stack>
         )}
-      </section>
+      </SectionCard>
 
-      <section>
-        <h2>Classifications</h2>
+      <SectionCard title="Classifications">
+        <Stack spacing={2}>
+          <Box>
+            <Typography component="h3" variant="h3">
+              Country Exposure
+            </Typography>
+            <Typography sx={{ mb: 0.75 }}>
+              Unclassified: {snapshot.classifications.summaries.country.unclassifiedPct.toFixed(2)}%
+            </Typography>
+            <Stack component="ul" sx={{ m: 0, pl: 2 }}>
+              {snapshot.classifications.byCountry.map((row) => (
+                <li key={`country-${row.key}`}>
+                  {row.key}: {formatNumber(row.marketValue)} ({row.portfolioWeightPct.toFixed(2)}%)
+                </li>
+              ))}
+            </Stack>
+          </Box>
 
-        <h3>Country Exposure</h3>
-        <p>Unclassified: {snapshot.classifications.summaries.country.unclassifiedPct.toFixed(2)}%</p>
-        <ul>
-          {snapshot.classifications.byCountry.map((row) => (
-            <li key={`country-${row.key}`}>
-              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
-            </li>
-          ))}
-        </ul>
+          <Box>
+            <Typography component="h3" variant="h3">
+              Sector Exposure
+            </Typography>
+            <Typography sx={{ mb: 0.75 }}>
+              Unclassified: {snapshot.classifications.summaries.sector.unclassifiedPct.toFixed(2)}%
+            </Typography>
+            <Stack component="ul" sx={{ m: 0, pl: 2 }}>
+              {snapshot.classifications.bySector.map((row) => (
+                <li key={`sector-${row.key}`}>
+                  {row.key}: {formatNumber(row.marketValue)} ({row.portfolioWeightPct.toFixed(2)}%)
+                </li>
+              ))}
+            </Stack>
+          </Box>
 
-        <h3>Sector Exposure</h3>
-        <p>Unclassified: {snapshot.classifications.summaries.sector.unclassifiedPct.toFixed(2)}%</p>
-        <ul>
-          {snapshot.classifications.bySector.map((row) => (
-            <li key={`sector-${row.key}`}>
-              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
-            </li>
-          ))}
-        </ul>
+          <Box>
+            <Typography component="h3" variant="h3">
+              Industry Exposure
+            </Typography>
+            <Typography sx={{ mb: 0.75 }}>
+              Unclassified: {snapshot.classifications.summaries.industry.unclassifiedPct.toFixed(2)}%
+            </Typography>
+            <Stack component="ul" sx={{ m: 0, pl: 2 }}>
+              {snapshot.classifications.byIndustry.map((row) => (
+                <li key={`industry-${row.key}`}>
+                  {row.key}: {formatNumber(row.marketValue)} ({row.portfolioWeightPct.toFixed(2)}%)
+                </li>
+              ))}
+            </Stack>
+          </Box>
 
-        <h3>Industry Exposure</h3>
-        <p>Unclassified: {snapshot.classifications.summaries.industry.unclassifiedPct.toFixed(2)}%</p>
-        <ul>
-          {snapshot.classifications.byIndustry.map((row) => (
-            <li key={`industry-${row.key}`}>
-              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
-            </li>
-          ))}
-        </ul>
-
-        <h3>Currency Exposure</h3>
-        <p>Unclassified: {snapshot.classifications.summaries.currency.unclassifiedPct.toFixed(2)}%</p>
-        <ul>
-          {snapshot.classifications.byCurrency.map((row) => (
-            <li key={`currency-${row.key}`}>
-              {row.key}: {row.marketValue.toFixed(2)} ({row.portfolioWeightPct.toFixed(2)}%)
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+          <Box>
+            <Typography component="h3" variant="h3">
+              Currency Exposure
+            </Typography>
+            <Typography sx={{ mb: 0.75 }}>
+              Unclassified: {snapshot.classifications.summaries.currency.unclassifiedPct.toFixed(2)}%
+            </Typography>
+            <Stack component="ul" sx={{ m: 0, pl: 2 }}>
+              {snapshot.classifications.byCurrency.map((row) => (
+                <li key={`currency-${row.key}`}>
+                  {row.key}: {formatNumber(row.marketValue)} ({row.portfolioWeightPct.toFixed(2)}%)
+                </li>
+              ))}
+            </Stack>
+          </Box>
+        </Stack>
+      </SectionCard>
+    </Box>
   );
 }

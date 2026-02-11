@@ -1,15 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
+import { Box, Button, Stack, Typography } from "@mui/material";
+import { SectionCard } from "@/src/components/ui/section-card";
 
 type ChartRow = {
   key: string;
@@ -48,13 +42,12 @@ function ExposureChart(props: {
   };
 
   return (
-    <section>
-      <h3>{props.title}</h3>
+    <SectionCard title={props.title} compact>
       {props.rows.length === 0 ? (
-        <p>No data.</p>
+        <Typography color="text.secondary">No data.</Typography>
       ) : (
-        <div>
-          <div style={{ width: "100%", overflowX: "auto" }}>
+        <Box>
+          <Box sx={{ width: "100%", overflowX: "auto" }}>
             <BarChart
               data={props.rows}
               width={Math.max(720, props.rows.length * 96)}
@@ -68,32 +61,34 @@ function ExposureChart(props: {
                 formatter={(value, _name, item) => {
                   const marketValue = Number(value ?? 0);
                   const weight = Number(
-                    (item?.payload as { portfolioWeightPct?: number } | undefined)?.portfolioWeightPct ??
-                      0,
+                    (item?.payload as { portfolioWeightPct?: number } | undefined)
+                      ?.portfolioWeightPct ?? 0,
                   );
                   return [`${currency(marketValue)} (${weight.toFixed(2)}%)`, "Value"];
                 }}
               />
-              <Bar dataKey="marketValue" fill="#155e75" onClick={handleBarClick} cursor="pointer" />
+              <Bar dataKey="marketValue" fill="#0B5CAB" onClick={handleBarClick} cursor="pointer" />
             </BarChart>
-          </div>
+          </Box>
           {props.onPointClick ? (
-            <p style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
               {props.rows.slice(0, 8).map((row) => (
-                <button
+                <Button
                   key={`${props.title}-${row.key}`}
                   type="button"
+                  size="small"
+                  variant="outlined"
                   onClick={() => props.onPointClick?.(props.dimension, row)}
                   data-testid={`chart-point-${props.title}-${row.key}`.replace(/[^a-zA-Z0-9_-]/g, "-")}
                 >
                   {row.key}
-                </button>
+                </Button>
               ))}
-            </p>
+            </Stack>
           ) : null}
-        </div>
+        </Box>
       )}
-    </section>
+    </SectionCard>
   );
 }
 
@@ -109,29 +104,47 @@ export function ExposureCharts(props: ExposureChartsProps) {
     : undefined;
 
   return (
-    <section>
-      <h2>Exposure Charts (Top {props.topN})</h2>
-      {props.marketValueAuditHref ? <p>Click any bar to open Market Value audit.</p> : null}
-      <ExposureChart
-        title="Holdings Concentration"
-        dimension="holding"
-        rows={props.holdings}
-        onPointClick={onPointClick}
-      />
-      <ExposureChart title="Country Exposure" dimension="country" rows={props.countries} onPointClick={onPointClick} />
-      <ExposureChart title="Sector Exposure" dimension="sector" rows={props.sectors} onPointClick={onPointClick} />
-      <ExposureChart
-        title="Industry Exposure"
-        dimension="industry"
-        rows={props.industries}
-        onPointClick={onPointClick}
-      />
-      <ExposureChart
-        title="Currency Exposure"
-        dimension="currency"
-        rows={props.currencies}
-        onPointClick={onPointClick}
-      />
-    </section>
+    <Box component="section">
+      <Typography component="h2" variant="h2" sx={{ mb: 1.5 }}>
+        Exposure Charts (Top {props.topN})
+      </Typography>
+      {props.marketValueAuditHref ? (
+        <Typography color="text.secondary" sx={{ mb: 1.5 }}>
+          Click any bar to open Market Value audit.
+        </Typography>
+      ) : null}
+      <Stack spacing={1.5}>
+        <ExposureChart
+          title="Holdings Concentration"
+          dimension="holding"
+          rows={props.holdings}
+          onPointClick={onPointClick}
+        />
+        <ExposureChart
+          title="Country Exposure"
+          dimension="country"
+          rows={props.countries}
+          onPointClick={onPointClick}
+        />
+        <ExposureChart
+          title="Sector Exposure"
+          dimension="sector"
+          rows={props.sectors}
+          onPointClick={onPointClick}
+        />
+        <ExposureChart
+          title="Industry Exposure"
+          dimension="industry"
+          rows={props.industries}
+          onPointClick={onPointClick}
+        />
+        <ExposureChart
+          title="Currency Exposure"
+          dimension="currency"
+          rows={props.currencies}
+          onPointClick={onPointClick}
+        />
+      </Stack>
+    </Box>
   );
 }

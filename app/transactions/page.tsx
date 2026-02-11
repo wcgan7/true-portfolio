@@ -1,6 +1,24 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Button,
+  LinearProgress,
+  Stack,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+} from "@mui/material";
+import { DataTable } from "@/src/components/ui/data-table";
+import { EmptyState } from "@/src/components/ui/empty-state";
+import { FilterBar } from "@/src/components/ui/filter-bar";
+import { FormSection } from "@/src/components/ui/form-section";
+import { InlineAlert } from "@/src/components/ui/inline-alert";
+import { PageHeader } from "@/src/components/ui/page-header";
+import { SectionCard } from "@/src/components/ui/section-card";
 
 type Account = {
   id: string;
@@ -384,396 +402,482 @@ export default function TransactionsPage() {
   }
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Transactions</h1>
-      <p>Create instruments and enter portfolio transactions manually.</p>
+    <Box component="main">
+      <PageHeader
+        title="Transactions"
+        subtitle="Create instruments and enter portfolio transactions manually."
+      />
 
-      {loading ? <p>Loading...</p> : null}
+      {loading ? <LinearProgress sx={{ mb: 2 }} /> : null}
 
-      <section>
-        <h2>Create Instrument</h2>
-        <form onSubmit={onCreateInstrument} style={{ display: "grid", gap: 8, maxWidth: 520 }}>
-          <label htmlFor="instrument-symbol">Symbol</label>
-          <input
-            id="instrument-symbol"
-            value={symbol}
-            onChange={(event) => setSymbol(event.target.value)}
-            data-testid="instrument-symbol-input"
-          />
+      <Stack spacing={2.5}>
+        <FormSection title="Create Instrument">
+          <Box component="form" onSubmit={onCreateInstrument} sx={{ display: "grid", gap: 2, maxWidth: 580 }}>
+            <TextField
+              id="instrument-symbol"
+              label="Symbol"
+              value={symbol}
+              onChange={(event) => setSymbol(event.target.value)}
+              inputProps={{ "data-testid": "instrument-symbol-input" }}
+            />
 
-          <label htmlFor="instrument-name">Name</label>
-          <input
-            id="instrument-name"
-            value={instrumentName}
-            onChange={(event) => setInstrumentName(event.target.value)}
-            data-testid="instrument-name-input"
-          />
+            <TextField
+              id="instrument-name"
+              label="Name"
+              value={instrumentName}
+              onChange={(event) => setInstrumentName(event.target.value)}
+              inputProps={{ "data-testid": "instrument-name-input" }}
+            />
 
-          <label htmlFor="instrument-kind">Kind</label>
-          <select
-            id="instrument-kind"
-            value={kind}
-            onChange={(event) => setKind(event.target.value as Instrument["kind"])}
-            data-testid="instrument-kind-select"
-          >
-            <option value="STOCK">STOCK</option>
-            <option value="ETF">ETF</option>
-            <option value="CUSTOM">CUSTOM</option>
-            <option value="OPTION">OPTION</option>
-            <option value="CASH">CASH</option>
-          </select>
-
-          <button
-            type="submit"
-            disabled={submittingInstrument}
-            data-testid="create-instrument-btn"
-          >
-            {submittingInstrument ? "Creating..." : "Create Instrument"}
-          </button>
-        </form>
-      </section>
-
-      <section>
-        <h2>Create Transaction</h2>
-        <form onSubmit={onCreateTransaction} style={{ display: "grid", gap: 8, maxWidth: 560 }}>
-          <label htmlFor="tx-account">Account</label>
-          <select
-            id="tx-account"
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value)}
-            data-testid="tx-account-select"
-          >
-            <option value="">Select account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="tx-type">Type</label>
-          <select
-            id="tx-type"
-            value={type}
-            onChange={(event) => setType(event.target.value as TxType)}
-            data-testid="tx-type-select"
-          >
-            {TX_TYPES.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-
-          {isTradeType(type) ? (
-            <>
-              <label htmlFor="tx-instrument">Instrument</label>
-              <select
-                id="tx-instrument"
-                value={instrumentId}
-                onChange={(event) => setInstrumentId(event.target.value)}
-                data-testid="tx-instrument-select"
+            <Box>
+              <label htmlFor="instrument-kind">Kind</label>
+              <Box
+                component="select"
+                id="instrument-kind"
+                value={kind}
+                onChange={(event) => setKind(event.target.value as Instrument["kind"])}
+                data-testid="instrument-kind-select"
+                sx={{
+                  mt: 0.5,
+                  width: "100%",
+                  borderRadius: 1.25,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  px: 1.25,
+                  py: 1,
+                  bgcolor: "background.paper",
+                }}
               >
-                <option value="">Select instrument</option>
-                {instrumentOptions.map((instrument) => (
-                  <option key={instrument.id} value={instrument.id}>
-                    {instrument.symbol} ({instrument.kind})
+                <option value="STOCK">STOCK</option>
+                <option value="ETF">ETF</option>
+                <option value="CUSTOM">CUSTOM</option>
+                <option value="OPTION">OPTION</option>
+                <option value="CASH">CASH</option>
+              </Box>
+            </Box>
+
+            <Button
+              type="submit"
+              disabled={submittingInstrument}
+              data-testid="create-instrument-btn"
+              variant="contained"
+            >
+              {submittingInstrument ? "Creating..." : "Create Instrument"}
+            </Button>
+          </Box>
+        </FormSection>
+
+        <FormSection title="Create Transaction">
+          <Box component="form" onSubmit={onCreateTransaction} sx={{ display: "grid", gap: 2, maxWidth: 640 }}>
+            <Box>
+              <label htmlFor="tx-account">Account</label>
+              <Box
+                component="select"
+                id="tx-account"
+                value={accountId}
+                onChange={(event) => setAccountId(event.target.value)}
+                data-testid="tx-account-select"
+                sx={{
+                  mt: 0.5,
+                  width: "100%",
+                  borderRadius: 1.25,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  px: 1.25,
+                  py: 1,
+                  bgcolor: "background.paper",
+                }}
+              >
+                <option value="">Select account</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
                   </option>
                 ))}
-              </select>
+              </Box>
+            </Box>
 
-              <label htmlFor="tx-quantity">Quantity</label>
-              <input
-                id="tx-quantity"
-                type="number"
-                step="0.000001"
-                value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
-                data-testid="tx-quantity-input"
-              />
+            <Box>
+              <label htmlFor="tx-type">Type</label>
+              <Box
+                component="select"
+                id="tx-type"
+                value={type}
+                onChange={(event) => setType(event.target.value as TxType)}
+                data-testid="tx-type-select"
+                sx={{
+                  mt: 0.5,
+                  width: "100%",
+                  borderRadius: 1.25,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  px: 1.25,
+                  py: 1,
+                  bgcolor: "background.paper",
+                }}
+              >
+                {TX_TYPES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </Box>
+            </Box>
 
-              <label htmlFor="tx-price">Price</label>
-              <input
-                id="tx-price"
-                type="number"
-                step="0.000001"
-                value={price}
-                onChange={(event) => setPrice(event.target.value)}
-                data-testid="tx-price-input"
-              />
-            </>
-          ) : (
-            <>
-              <label htmlFor="tx-amount">Amount</label>
-              <input
+            {isTradeType(type) ? (
+              <>
+                <Box>
+                  <label htmlFor="tx-instrument">Instrument</label>
+                  <Box
+                    component="select"
+                    id="tx-instrument"
+                    value={instrumentId}
+                    onChange={(event) => setInstrumentId(event.target.value)}
+                    data-testid="tx-instrument-select"
+                    sx={{
+                      mt: 0.5,
+                      width: "100%",
+                      borderRadius: 1.25,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      px: 1.25,
+                      py: 1,
+                      bgcolor: "background.paper",
+                    }}
+                  >
+                    <option value="">Select instrument</option>
+                    {instrumentOptions.map((instrument) => (
+                      <option key={instrument.id} value={instrument.id}>
+                        {instrument.symbol} ({instrument.kind})
+                      </option>
+                    ))}
+                  </Box>
+                </Box>
+
+                <TextField
+                  id="tx-quantity"
+                  type="number"
+                  label="Quantity"
+                  inputProps={{ step: "0.000001", "data-testid": "tx-quantity-input" }}
+                  value={quantity}
+                  onChange={(event) => setQuantity(event.target.value)}
+                />
+
+                <TextField
+                  id="tx-price"
+                  type="number"
+                  label="Price"
+                  inputProps={{ step: "0.000001", "data-testid": "tx-price-input" }}
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                />
+              </>
+            ) : (
+              <TextField
                 id="tx-amount"
                 type="number"
-                step="0.000001"
+                label="Amount"
+                inputProps={{ step: "0.000001", "data-testid": "tx-amount-input" }}
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
-                data-testid="tx-amount-input"
               />
-            </>
-          )}
+            )}
 
-          <label htmlFor="tx-trade-date">Trade Date</label>
-          <input
-            id="tx-trade-date"
-            type="date"
-            value={tradeDate}
-            onChange={(event) => setTradeDate(event.target.value)}
-            data-testid="tx-trade-date-input"
-          />
-
-          <label htmlFor="tx-fee">Fee</label>
-          <input
-            id="tx-fee"
-            type="number"
-            step="0.000001"
-            value={feeAmount}
-            onChange={(event) => setFeeAmount(event.target.value)}
-            data-testid="tx-fee-input"
-          />
-
-          <label htmlFor="tx-external-ref">External Ref</label>
-          <input
-            id="tx-external-ref"
-            value={externalRef}
-            onChange={(event) => setExternalRef(event.target.value)}
-            data-testid="tx-external-ref-input"
-          />
-
-          <label htmlFor="tx-notes">Notes</label>
-          <input
-            id="tx-notes"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            data-testid="tx-notes-input"
-          />
-
-          <button type="submit" disabled={submittingTx} data-testid="create-tx-btn">
-            {submittingTx ? "Creating..." : "Create Transaction"}
-          </button>
-        </form>
-      </section>
-
-      {error ? (
-        <p role="alert" style={{ color: "#b00020" }}>
-          {error}
-        </p>
-      ) : null}
-
-      <section>
-        <h2>Transaction Table</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-          <div>
-            <label htmlFor="filter-account">Filter by Account</label>
-            <select
-              id="filter-account"
-              value={filterAccountId}
-              onChange={(event) => void onFilterChange(event.target.value)}
-              data-testid="tx-filter-account-select"
-            >
-              <option value="">All accounts</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filter-from">From</label>
-            <input
-              id="filter-from"
+            <TextField
+              id="tx-trade-date"
+              label="Trade Date"
               type="date"
-              value={filterFrom}
-              onChange={(event) => setFilterFrom(event.target.value)}
-              data-testid="tx-filter-from-input"
+              value={tradeDate}
+              onChange={(event) => setTradeDate(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "tx-trade-date-input" }}
             />
-          </div>
-          <div>
-            <label htmlFor="filter-to">To</label>
-            <input
-              id="filter-to"
-              type="date"
-              value={filterTo}
-              onChange={(event) => setFilterTo(event.target.value)}
-              data-testid="tx-filter-to-input"
+
+            <TextField
+              id="tx-fee"
+              type="number"
+              label="Fee"
+              inputProps={{ step: "0.000001", "data-testid": "tx-fee-input" }}
+              value={feeAmount}
+              onChange={(event) => setFeeAmount(event.target.value)}
             />
-          </div>
-          <div style={{ alignSelf: "end" }}>
-            <button type="button" onClick={() => void onApplyFilters()} data-testid="tx-apply-filters-btn">
-              Apply Filters
-            </button>
-          </div>
-        </div>
 
-        {transactions.length === 0 ? (
-          <p>No transactions yet.</p>
-        ) : (
-          <table data-testid="transactions-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Account</th>
-                <th>Instrument</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Amount</th>
-                <th>Fee</th>
-                <th>Notes</th>
-                <th>External Ref</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((tx) => {
-                const isEditing = editingId === tx.id && editDraft != null;
-                const isTrade = isTradeType(tx.type);
-                const computedTradeAmount = isTrade
-                  ? (
-                      (Number(editDraft?.quantity || tx.quantity || 0) || 0) *
-                      (Number(editDraft?.price || tx.price || 0) || 0)
-                    ).toFixed(6)
-                  : null;
+            <TextField
+              id="tx-external-ref"
+              label="External Ref"
+              value={externalRef}
+              onChange={(event) => setExternalRef(event.target.value)}
+              inputProps={{ "data-testid": "tx-external-ref-input" }}
+            />
 
-                return (
-                  <tr key={tx.id}>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          value={editDraft.tradeDate}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, tradeDate: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-trade-date-input"
-                        />
-                      ) : (
-                        new Date(tx.tradeDate).toISOString().slice(0, 10)
-                      )}
-                    </td>
-                    <td>{tx.type}</td>
-                    <td>{accounts.find((a) => a.id === tx.accountId)?.name ?? tx.accountId}</td>
-                    <td>{instruments.find((i) => i.id === tx.instrumentId)?.symbol ?? "-"}</td>
-                    <td>
-                      {isEditing && isTrade ? (
-                        <input
-                          type="number"
-                          step="0.000001"
-                          value={editDraft.quantity}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, quantity: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-quantity-input"
-                        />
-                      ) : (
-                        tx.quantity ?? "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing && isTrade ? (
-                        <input
-                          type="number"
-                          step="0.000001"
-                          value={editDraft.price}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, price: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-price-input"
-                        />
-                      ) : (
-                        tx.price ?? "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing && !isTrade ? (
-                        <input
-                          type="number"
-                          step="0.000001"
-                          value={editDraft.amount}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, amount: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-amount-input"
-                        />
-                      ) : isEditing && isTrade ? (
-                        computedTradeAmount
-                      ) : (
-                        tx.amount
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          step="0.000001"
-                          value={editDraft.feeAmount}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, feeAmount: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-fee-input"
-                        />
-                      ) : (
-                        tx.feeAmount
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editDraft.notes}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-notes-input"
-                        />
-                      ) : (
-                        tx.notes ?? "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editDraft.externalRef}
-                          onChange={(event) =>
-                            setEditDraft((prev) => (prev ? { ...prev, externalRef: event.target.value } : prev))
-                          }
-                          data-testid="edit-tx-external-ref-input"
-                        />
-                      ) : (
-                        tx.externalRef ?? "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => void saveEdit(tx)}
-                            disabled={savingEdit}
-                            data-testid="save-tx-edit-btn"
-                          >
-                            {savingEdit ? "Saving..." : "Save"}
-                          </button>
-                          <button type="button" onClick={cancelEdit} data-testid="cancel-tx-edit-btn">
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => startEdit(tx)} data-testid="edit-tx-btn">
-                          Edit
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </main>
+            <TextField
+              id="tx-notes"
+              label="Notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              inputProps={{ "data-testid": "tx-notes-input" }}
+            />
+
+            <Button type="submit" disabled={submittingTx} variant="contained" data-testid="create-tx-btn">
+              {submittingTx ? "Creating..." : "Create Transaction"}
+            </Button>
+          </Box>
+        </FormSection>
+
+        {error ? <InlineAlert severity="error">{error}</InlineAlert> : null}
+
+        <SectionCard title="Transaction Table">
+          <Stack spacing={1.5}>
+            <FilterBar>
+              <Box sx={{ minWidth: { xs: "100%", md: 220 } }}>
+                <label htmlFor="filter-account">Filter by Account</label>
+                <Box
+                  component="select"
+                  id="filter-account"
+                  value={filterAccountId}
+                  onChange={(event) => void onFilterChange(event.target.value)}
+                  data-testid="tx-filter-account-select"
+                  style={{ marginTop: 4 }}
+                  sx={{
+                    width: "100%",
+                    borderRadius: 1.25,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    px: 1.25,
+                    py: 1,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <option value="">All accounts</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </Box>
+              </Box>
+              <TextField
+                id="filter-from"
+                label="From"
+                type="date"
+                value={filterFrom}
+                onChange={(event) => setFilterFrom(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ "data-testid": "tx-filter-from-input" }}
+                sx={{ minWidth: { xs: "100%", md: 170 } }}
+              />
+              <TextField
+                id="filter-to"
+                label="To"
+                type="date"
+                value={filterTo}
+                onChange={(event) => setFilterTo(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ "data-testid": "tx-filter-to-input" }}
+                sx={{ minWidth: { xs: "100%", md: 170 } }}
+              />
+              <Button
+                type="button"
+                onClick={() => void onApplyFilters()}
+                data-testid="tx-apply-filters-btn"
+                variant="outlined"
+              >
+                Apply Filters
+              </Button>
+            </FilterBar>
+
+            {transactions.length === 0 ? (
+              <EmptyState title="No transactions yet." />
+            ) : (
+              <DataTable testId="transactions-table" compact>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Account</TableCell>
+                    <TableCell>Instrument</TableCell>
+                    <TableCell>Qty</TableCell>
+                    <TableCell>Price</TableCell>
+                    <TableCell>Amount</TableCell>
+                    <TableCell>Fee</TableCell>
+                    <TableCell>Notes</TableCell>
+                    <TableCell>External Ref</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {transactions.map((tx) => {
+                    const isEditing = editingId === tx.id && editDraft != null;
+                    const isTrade = isTradeType(tx.type);
+                    const computedTradeAmount = isTrade
+                      ? (
+                          (Number(editDraft?.quantity || tx.quantity || 0) || 0) *
+                          (Number(editDraft?.price || tx.price || 0) || 0)
+                        ).toFixed(6)
+                      : null;
+
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell>
+                          {isEditing ? (
+                            <TextField
+                              type="date"
+                              size="small"
+                              value={editDraft.tradeDate}
+                              onChange={(event) =>
+                                setEditDraft((prev) =>
+                                  prev ? { ...prev, tradeDate: event.target.value } : prev,
+                                )
+                              }
+                              inputProps={{ "data-testid": "edit-tx-trade-date-input" }}
+                            />
+                          ) : (
+                            new Date(tx.tradeDate).toISOString().slice(0, 10)
+                          )}
+                        </TableCell>
+                        <TableCell>{tx.type}</TableCell>
+                        <TableCell>{accounts.find((a) => a.id === tx.accountId)?.name ?? tx.accountId}</TableCell>
+                        <TableCell>{instruments.find((i) => i.id === tx.instrumentId)?.symbol ?? "-"}</TableCell>
+                        <TableCell>
+                          {isEditing && isTrade ? (
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={editDraft.quantity}
+                              onChange={(event) =>
+                                setEditDraft((prev) =>
+                                  prev ? { ...prev, quantity: event.target.value } : prev,
+                                )
+                              }
+                              inputProps={{ step: "0.000001", "data-testid": "edit-tx-quantity-input" }}
+                            />
+                          ) : (
+                            tx.quantity ?? "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing && isTrade ? (
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={editDraft.price}
+                              onChange={(event) =>
+                                setEditDraft((prev) => (prev ? { ...prev, price: event.target.value } : prev))
+                              }
+                              inputProps={{ step: "0.000001", "data-testid": "edit-tx-price-input" }}
+                            />
+                          ) : (
+                            tx.price ?? "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing && !isTrade ? (
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={editDraft.amount}
+                              onChange={(event) =>
+                                setEditDraft((prev) => (prev ? { ...prev, amount: event.target.value } : prev))
+                              }
+                              inputProps={{ step: "0.000001", "data-testid": "edit-tx-amount-input" }}
+                            />
+                          ) : isEditing && isTrade ? (
+                            computedTradeAmount
+                          ) : (
+                            tx.amount
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={editDraft.feeAmount}
+                              onChange={(event) =>
+                                setEditDraft((prev) =>
+                                  prev ? { ...prev, feeAmount: event.target.value } : prev,
+                                )
+                              }
+                              inputProps={{ step: "0.000001", "data-testid": "edit-tx-fee-input" }}
+                            />
+                          ) : (
+                            tx.feeAmount
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <TextField
+                              size="small"
+                              value={editDraft.notes}
+                              onChange={(event) =>
+                                setEditDraft((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+                              }
+                              inputProps={{ "data-testid": "edit-tx-notes-input" }}
+                            />
+                          ) : (
+                            tx.notes ?? "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <TextField
+                              size="small"
+                              value={editDraft.externalRef}
+                              onChange={(event) =>
+                                setEditDraft((prev) =>
+                                  prev ? { ...prev, externalRef: event.target.value } : prev,
+                                )
+                              }
+                              inputProps={{ "data-testid": "edit-tx-external-ref-input" }}
+                            />
+                          ) : (
+                            tx.externalRef ?? "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                type="button"
+                                onClick={() => void saveEdit(tx)}
+                                disabled={savingEdit}
+                                size="small"
+                                variant="contained"
+                                data-testid="save-tx-edit-btn"
+                              >
+                                {savingEdit ? "Saving..." : "Save"}
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={cancelEdit}
+                                size="small"
+                                variant="outlined"
+                                data-testid="cancel-tx-edit-btn"
+                              >
+                                Cancel
+                              </Button>
+                            </Stack>
+                          ) : (
+                            <Button
+                              type="button"
+                              onClick={() => startEdit(tx)}
+                              size="small"
+                              variant="outlined"
+                              data-testid="edit-tx-btn"
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </DataTable>
+            )}
+          </Stack>
+        </SectionCard>
+      </Stack>
+    </Box>
   );
 }

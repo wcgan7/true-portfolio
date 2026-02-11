@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  Drawer,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { InlineAlert } from "@/src/components/ui/inline-alert";
 
 type AuditMetric =
   | "totalValue"
@@ -71,9 +81,7 @@ export function MetricAuditDrawer(props: {
   initialScopeSymbol?: string;
 }) {
   const [isOpen, setIsOpen] = useState(Boolean(props.initialMetric));
-  const [selectedMetric, setSelectedMetric] = useState<AuditMetric>(
-    props.initialMetric ?? "totalValue",
-  );
+  const [selectedMetric, setSelectedMetric] = useState<AuditMetric>(props.initialMetric ?? "totalValue");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audit, setAudit] = useState<MetricAuditPayload | null>(null);
@@ -150,64 +158,68 @@ export function MetricAuditDrawer(props: {
   ]);
 
   return (
-    <section>
-      <h2>Metric Audit</h2>
-      <p style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <Box component="section">
+      <Typography component="h2" variant="h2" sx={{ mb: 1.25 }}>
+        Metric Audit
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
         {METRICS.map((metric) => (
-          <button
+          <Button
             key={metric}
             type="button"
+            size="small"
+            variant={selectedMetric === metric ? "contained" : "outlined"}
             data-testid={`open-audit-${metric}`}
             onClick={() => openWithMetric(metric)}
           >
             {metric}
-          </button>
+          </Button>
         ))}
-      </p>
+      </Stack>
 
       {!isOpen ? (
-        <p>
-          <button type="button" onClick={() => setIsOpen(true)} data-testid="open-audit-drawer-btn">
-            Open Audit Drawer
-          </button>
-        </p>
+        <Button type="button" onClick={() => setIsOpen(true)} data-testid="open-audit-drawer-btn" variant="outlined">
+          Open Audit Drawer
+        </Button>
       ) : null}
 
-      {isOpen ? (
-        <aside
-          data-testid="metric-audit-drawer"
-          style={{
-            position: "fixed",
-            right: 0,
-            top: 0,
-            width: "min(560px, 95vw)",
-            height: "100vh",
-            background: "#fff",
-            borderLeft: "1px solid #ddd",
-            padding: 16,
-            overflowY: "auto",
-            boxShadow: "-6px 0 16px rgba(0, 0, 0, 0.12)",
-            zIndex: 40,
-          }}
-        >
-          <p style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <strong>Metric Audit Drawer</strong>
-            <button type="button" onClick={() => setIsOpen(false)} data-testid="close-audit-drawer-btn">
+      <Drawer
+        anchor="right"
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        data-testid="metric-audit-drawer"
+      >
+        <Box sx={{ width: "min(560px, 95vw)", p: 2.25 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+            <Typography component="strong" sx={{ fontWeight: 700 }}>
+              Metric Audit Drawer
+            </Typography>
+            <Button type="button" onClick={() => setIsOpen(false)} data-testid="close-audit-drawer-btn">
               Close
-            </button>
-          </p>
-          {loading ? <p>Loading audit...</p> : null}
-          {error ? <p role="alert">{error}</p> : null}
+            </Button>
+          </Stack>
+          <Typography component="h3" variant="h3" data-testid="metric-audit-title" sx={{ mb: 1.25 }}>
+            Metric Audit: {audit?.metric ?? selectedMetric}
+          </Typography>
+          {loading ? <Typography>Loading audit...</Typography> : null}
+          {error ? <InlineAlert severity="error">{error}</InlineAlert> : null}
           {audit ? (
-            <div>
-              <h3 data-testid="metric-audit-title">Metric Audit: {audit.metric}</h3>
-              <p>As of: {audit.asOfDate}</p>
-              <p data-testid="metric-audit-scope">
+            <Stack spacing={1.4}>
+              <Typography>As of: {audit.asOfDate}</Typography>
+              <Typography data-testid="metric-audit-scope">
                 Scope: {audit.scope ? `${audit.scope.dimension}=${audit.scope.symbol}` : "none"}
-              </p>
-              <p>Value: {audit.value == null ? "N/A" : audit.value.toFixed(6)}</p>
-              <p>Transactions contributing: {audit.contributors.transactions.length}</p>
-              <p>Warnings in scope: {audit.contributors.warnings.length}</p>
+              </Typography>
+              <Typography>Value: {audit.value == null ? "N/A" : audit.value.toFixed(6)}</Typography>
+              <Typography>Transactions contributing: {audit.contributors.transactions.length}</Typography>
+              <Typography>Warnings in scope: {audit.contributors.warnings.length}</Typography>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip label={`Holdings: ${audit.contributors.holdings.length}`} size="small" />
+                <Chip label={`Transactions: ${audit.contributors.transactions.length}`} size="small" />
+                <Chip label={`Warnings: ${audit.contributors.warnings.length}`} size="small" />
+              </Stack>
+
+              <Divider />
 
               <details open>
                 <summary>Holdings ({audit.contributors.holdings.length})</summary>
@@ -244,10 +256,10 @@ export function MetricAuditDrawer(props: {
                   ))}
                 </ul>
               </details>
-            </div>
+            </Stack>
           ) : null}
-        </aside>
-      ) : null}
-    </section>
+        </Box>
+      </Drawer>
+    </Box>
   );
 }

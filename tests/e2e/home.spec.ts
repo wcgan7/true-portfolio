@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { prisma } from "../../src/lib/db";
 
@@ -15,6 +16,17 @@ test("home page loads", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "True Portfolio" })).toBeVisible();
   await expect(page.getByText("Trust-first portfolio analytics.")).toBeVisible();
+});
+
+test("app shell navigation supports desktop and mobile", async ({ page }) => {
+  await page.goto("/overview");
+  await expect(page.getByTestId("app-shell-nav")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId("app-shell-mobile-menu-btn").click();
+  await expect(page.getByTestId("app-shell-mobile-drawer")).toBeVisible();
+  await page.getByRole("link", { name: "Accounts" }).click();
+  await expect(page).toHaveURL(/\/accounts$/);
 });
 
 test("overview page loads", async ({ page }) => {
@@ -231,3 +243,16 @@ test("overview renders flattened look-through rows after mode switch", async ({ 
   await expect(page.getByRole("cell", { name: constituentSymbol })).toHaveCount(1);
   await expect(page.getByRole("cell", { name: "UNMAPPED_ETF_EXPOSURE" })).toHaveCount(1);
 });
+
+for (const route of ["/overview", "/transactions", "/valuations"]) {
+  test(`accessibility baseline has no critical violations on ${route}`, async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto(route);
+    await expect(page.getByRole("heading").first()).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze();
+    const critical = results.violations.filter((violation) => violation.impact === "critical");
+    expect(critical, JSON.stringify(critical, null, 2)).toEqual([]);
+  });
+}
