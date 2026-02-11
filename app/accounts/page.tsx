@@ -1,6 +1,23 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Button,
+  Skeleton,
+  Stack,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+} from "@mui/material";
+import { DataTable } from "@/src/components/ui/data-table";
+import { EmptyState } from "@/src/components/ui/empty-state";
+import { FormSection } from "@/src/components/ui/form-section";
+import { InlineAlert } from "@/src/components/ui/inline-alert";
+import { PageHeader } from "@/src/components/ui/page-header";
+import { SectionCard } from "@/src/components/ui/section-card";
 
 type Account = {
   id: string;
@@ -68,60 +85,61 @@ export default function AccountsPage() {
   const hasAccounts = useMemo(() => accounts.length > 0, [accounts.length]);
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Accounts</h1>
-      <p>Create and manage portfolio accounts.</p>
+    <Box component="main">
+      <PageHeader title="Accounts" subtitle="Create and manage portfolio accounts." />
 
-      <section>
-        <h2>Create Account</h2>
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-          <label htmlFor="account-name">Account Name</label>
-          <input
-            id="account-name"
-            name="accountName"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Main Brokerage"
-            data-testid="account-name-input"
-          />
-          <button type="submit" disabled={submitting} data-testid="create-account-btn">
-            {submitting ? "Creating..." : "Create Account"}
-          </button>
-        </form>
-      </section>
+      <Stack spacing={2.5}>
+        <FormSection title="Create Account">
+          <Box component="form" onSubmit={onSubmit} sx={{ display: "grid", gap: 2, maxWidth: 440 }}>
+            <TextField
+              id="account-name"
+              name="accountName"
+              label="Account Name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Main Brokerage"
+              inputProps={{ "data-testid": "account-name-input" }}
+              fullWidth
+            />
+            <Button type="submit" disabled={submitting} variant="contained" data-testid="create-account-btn">
+              {submitting ? "Creating..." : "Create Account"}
+            </Button>
+          </Box>
+        </FormSection>
 
-      {error ? (
-        <p role="alert" style={{ color: "#b00020" }}>
-          {error}
-        </p>
-      ) : null}
+        {error ? <InlineAlert severity="error">{error}</InlineAlert> : null}
 
-      <section>
-        <h2>Account List</h2>
-        {loading ? <p>Loading accounts...</p> : null}
-        {!loading && !hasAccounts ? <p>No accounts yet.</p> : null}
-        {!loading && hasAccounts ? (
-          <table data-testid="accounts-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Currency</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => (
-                <tr key={account.id}>
-                  <td>{account.name}</td>
-                  <td>{account.baseCurrency}</td>
-                  <td>{new Date(account.createdAt).toISOString().slice(0, 10)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
-      </section>
-    </main>
+        <SectionCard title="Account List">
+          {loading ? (
+            <Stack spacing={1.2}>
+              <Skeleton variant="rounded" height={36} />
+              <Skeleton variant="rounded" height={36} />
+              <Skeleton variant="rounded" height={36} />
+            </Stack>
+          ) : null}
+          {!loading && !hasAccounts ? <EmptyState title="No accounts yet." /> : null}
+          {!loading && hasAccounts ? (
+            <DataTable testId="accounts-table" compact>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Currency</TableCell>
+                  <TableCell>Created</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {accounts.map((account) => (
+                  <TableRow key={account.id}>
+                    <TableCell>{account.name}</TableCell>
+                    <TableCell>{account.baseCurrency}</TableCell>
+                    <TableCell>{new Date(account.createdAt).toISOString().slice(0, 10)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </DataTable>
+          ) : null}
+        </SectionCard>
+      </Stack>
+    </Box>
   );
 }
-
